@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Видео Помощник: Планировщик</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: sans-serif; }
+    #toolbar { position: absolute; top: 10px; left: 10px; z-index: 10; background: #fff; padding: 8px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    button { margin: 0 5px; }
+  </style>
+  <!-- Подключаем Konva через CDN -->
+  <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="wallModeBtn" style="background:#aaf;">🧱 Стена</button>
+    <button id="selectModeBtn">🖱 Выбор</button>
+    <button id="clearBtn">🗑 Очистить</button>
+  </div>
+  <div id="container"></div>
+
+  <script>
+    // ----- НАСТРОЙКИ -----
+    const stage = new Konva.Stage({
+      container: 'container',
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    const layer = new Konva.Layer();
+    stage.add(layer);
+
+    // Сетка (мелкие клетки для ориентира)
+    const gridSize = 20;
+    for (let i = 0; i < stage.width(); i += gridSize) {
+      layer.add(new Konva.Line({
+        points: [i, 0, i, stage.height()],
+        stroke: '#ddd',
+        strokeWidth: 0.5,
+      }));
+    }
+    for (let j = 0; j < stage.height(); j += gridSize) {
+      layer.add(new Konva.Line({
+        points: [0, j, stage.width(), j],
+        stroke: '#ddd',
+        strokeWidth: 0.5,
+      }));
+    }
+
+    // ----- СОСТОЯНИЯ -----
+    let mode = 'wall'; // 'wall' или 'select'
+    let walls = []; // массив объектов { id, x1, y1, x2, y2 }
+    let isDrawing = false;
+    let startPoint = null;
+    let tempLine = null;
+
+    // ----- ИНСТРУМЕНТЫ -----
+    document.getElementById('wallModeBtn').addEventListener('click', () => {
+      mode = 'wall';
+      document.getElementById('wallModeBtn').style.background = '#aaf';
+      document.getElementById('selectModeBtn').style.background = '';
+    });
+    document.getElementById('selectModeBtn').addEventListener('click', () => {
+      mode = 'select';
+      document.getElementById('selectModeBtn').style.background = '#aaf';
+      document.getElementById('wallModeBtn').style.background = '';
+    });
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      walls.length = 0;
+      layer.destroyChildren();
+      // перерисовываем сетку
+      redrawGrid();
+      layer.draw();
+    });
+
+    function redrawGrid() {
+      for (let i = 0; i < stage.width(); i += gridSize) {
+        layer.add(new Konva.Line({
+          points: [i, 0, i, stage.height()],
+          stroke: '#ddd',
+          strokeWidth: 0.5,
+        }));
+      }
+      for (let j = 0; j < stage.height(); j += gridSize) {
+        layer.add(new Konva.Line({
+          points: [0, j, stage.width(), j],
+          stroke: '#ddd',
+          strokeWidth: 0.5,
+        }));
+      }
+    }
+
+    // ----- РИСОВАНИЕ СТЕН -----
+    stage.on('mousedown', (e) => {
+      if (mode !== 'wall') return;
+      const pos = stage.getPointerPosition();
+      isDrawing = true;
+      startPoint = { x: pos.x, y: pos.y };
+      // создаём временную линию
+      tempLine = new Konva.Line({
+        points: [startPoint.x, startPoint.y, pos.x, pos.y],
+        stroke: 'red',
+        strokeWidth: 3,
+        dash: [10, 5],
+      });
+      layer.add(tempLine);
+    });
+
+    stage.on('mousemove', () => {
+      if (!isDrawing || mode !== 'wall') return;
+      const pos = stage.getPointerPosition();
+      tempLine.points([startPoint.x, startPoint.y, pos.x, pos.y]);
+      layer.batchDraw();
+    });
+
+    stage.on('mouseup', () => {
+      if (!isDrawing || mode !== 'wall') return;
+      isDrawing = false;
+      const pos = stage.getPointerPosition();
+      tempLine.destroy();
+      // если линия слишком короткая, игнорируем
+      const dx = pos.x - startPoint.x;
+      const dy = pos.y - startPoint.y;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        layer.draw();
+        return;
+      }
+      // создаём постоянную стену
+      const wall = new Konva.Line({
+        points: [startPoint.x, startPoint.y, pos.x, pos.y],
+        stroke: 'black',
+        strokeWidth: 4,
+        draggable: true,
+        id: `wall_${walls.length}`,
+      });
+      walls.push({
+        id: walls.length,
+        x1: startPoint.x,
+        y1: startPoint.y,
+        x2: pos.x,
+        y2: pos.y,
+        line: wall, // ссылка для возможного удаления/редактирования
+      });
+      layer.add(wall);
+      layer.draw();
+    });
+
+    // первоначальная прорисовка
+    layer.draw();
+  </script>
+</body>
+</html>
