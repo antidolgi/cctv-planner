@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Видео Помощник: Планировщик CCTV</title>
+    <title>Видео Помощник: Планировщик CCTV v.3</title>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         #toolbar {
             position: absolute; top: 10px; left: 10px; z-index: 10;
             background: rgba(255,255,255,0.95); padding: 12px; border-radius: 8px;
@@ -20,7 +20,6 @@
             background: rgba(255,255,255,0.95); padding: 10px; border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px;
         }
-        /* Контекстное меню */
         #contextMenu {
             position: absolute; display: none; background: #fff; border: 1px solid #ccc;
             border-radius: 6px; box-shadow: 0 6px 14px rgba(0,0,0,0.15); z-index: 2000;
@@ -41,6 +40,7 @@
             <button id="switchBtn">🔀 Свитч</button>
             <button id="nvrBtn">🖥 NVR</button>
             <button id="cableBtn">🔌 Кабель</button>
+            <button id="rulerBtn">📏 Линейка</button>
             <button id="deleteBtn">🗑 Удалить</button>
             <button id="calibrateBtn">📐 Калибровать</button>
             <button id="exportKPbtn">📄 КП</button>
@@ -57,16 +57,21 @@
             </select>
             <br><small>Вращение камеры: Shift+колёсико или правый клик → Повернуть.</small>
         </div>
+        <div style="margin-top:6px;">
+            <button id="bgBtn">🖼 Фон</button>
+            <input type="range" id="bgOpacity" min="0" max="100" value="40" style="width:80px;">
+            <input type="file" id="bgFileInput" accept="image/*" style="display:none;">
+        </div>
     </div>
 
     <div id="stats">
         <strong>Общая длина кабеля: <span id="totalLength">0</span> м</strong><br>
         <span id="scaleDisplay">Масштаб: 20 px/м</span>
+        <div id="logicWarnings" style="color:#c0392b; margin-top:4px;"></div>
     </div>
 
     <div id="container"></div>
 
-    <!-- Контекстное меню -->
     <div id="contextMenu">
         <ul>
             <li id="ctxRotate">Повернуть</li>
@@ -75,7 +80,7 @@
     </div>
 
     <script>
-        // -------------------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ --------------------
+        // ======================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ========================
         const stage = new Konva.Stage({
             container: 'container',
             width: window.innerWidth,
@@ -94,28 +99,28 @@
             updateTotalLength();
         });
 
-        // Хранилища
+        // Хранилища объектов
         let walls = [];      // { id, line, text, handles: [circle1, circle2] }
-        let cameras = [];    // { id, circle, text, sector, angle }
+        let cameras = [];    // { id, circle, text, sector, angle, direction, warning }
         let switches = [];   // { id, rect, text }
         let nvrs = [];       // { id, rect, text }
         let cables = [];     // { id, line, from, to }
 
         // Временные состояния
-        let wallDrawing = null;
-        let cableStart = null;
-        let calibrating = false;
+        let wallDrawing = null;       // для рисования стены
+        let cableStart = null;       // для начала кабеля
+        let calibrating = false;     // режим калибровки
         let calibLine = null;
         let calibStartPos = null;
-        let selectedCamera = null;
+        let selectedCamera = null;   // для вращения
         let rotateHandle = null;
-        let rotatingFromMenu = false;
-
-        // Контекстное меню
-        const contextMenu = document.getElementById('contextMenu');
         let contextTarget = null;
+        let rulerPoints = [];
+        let rulerLine = null;
+        let rulerText = null;
+        let backgroundImage = null;
 
-        // -------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ --------------------
+        // ======================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ========================
         function generateId() { return Math.random().toString(36).substr(2, 9); }
 
         function getObjectCenter(type, id) {
@@ -132,6 +137,7 @@
             cableObj.line.points(pts);
         }
 
+        // Алгоритм огибания стен
         function calculateWallPath(from, to) {
             if (traceMode !== 'walls') return [from.x, from.y, to.x, to.y];
             for (let wall of walls) {
@@ -161,13 +167,14 @@
             });
             document.getElementById('totalLength').textContent = (totalPx / pixelsPerMeter).toFixed(2);
             document.getElementById('scaleDisplay').textContent = `Масштаб: ${pixelsPerMeter.toFixed(1)} px/м`;
+            checkLogic();
         }
 
         function updateWallLength(wall) {
             const pts = wall.line.points();
             const lenPx = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]);
             wall.text.text(`${(lenPx / pixelsPerMeter).toFixed(2)} м`);
-            if (wall.text) wall.text.position({ x: (pts[0] + pts[2]) / 2 - 20, y: (pts[1] + pts[3]) / 2 - 20 });
+            wall.text.position({ x: (pts[0] + pts[2]) / 2 - 20, y: (pts[1] + pts[3]) / 2 - 20 });
         }
 
         function updateCameraSector(cam) {
@@ -180,11 +187,28 @@
             cam.sector.points(pts);
         }
 
-        // -------------------- СЕТКА --------------------
+        // Логический контроль
+        function checkLogic() {
+            let lostCount = 0;
+            cameras.forEach(cam => {
+                const connected = cables.some(c =>
+                    (c.from.type === 'camera' && c.from.id === cam.id) || (c.to.type === 'camera' && c.to.id === cam.id)
+                );
+                if (!connected) lostCount++;
+                if (cam.warning) cam.warning.visible(!connected);
+            });
+            const totalSwitches = switches.length;
+            const usedPorts = cables.filter(c => c.from.type === 'switch' || c.to.type === 'switch').length;
+            document.getElementById('logicWarnings').innerHTML =
+                lostCount > 0 ? `⚠️ ${lostCount} камер(ы) не подключены!` :
+                `✅ Все камеры подключены. Примерно занято портов: ${usedPorts} (свитчей: ${totalSwitches})`;
+        }
+
+        // ======================== СЕТКА ========================
         for (let i = 0; i < stage.width(); i += 20) layer.add(new Konva.Line({ points: [i, 0, i, stage.height()], stroke: '#eee', strokeWidth: 0.5, listening: false }));
         for (let j = 0; j < stage.height(); j += 20) layer.add(new Konva.Line({ points: [0, j, stage.width(), j], stroke: '#eee', strokeWidth: 0.5, listening: false }));
 
-        // -------------------- УПРАВЛЕНИЕ ИНСТРУМЕНТАМИ --------------------
+        // ======================== УПРАВЛЕНИЕ ИНСТРУМЕНТАМИ ========================
         function setActiveTool(tool) {
             activeTool = tool;
             document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
@@ -194,12 +218,14 @@
             else if (tool === 'switch') document.getElementById('switchBtn').classList.add('active');
             else if (tool === 'nvr') document.getElementById('nvrBtn').classList.add('active');
             else if (tool === 'cable') document.getElementById('cableBtn').classList.add('active');
+            else if (tool === 'ruler') document.getElementById('rulerBtn').classList.add('active');
             else if (tool === 'delete') document.getElementById('deleteBtn').classList.add('active');
             else if (tool === 'calibrate') document.getElementById('calibrateBtn').classList.add('active');
             // Сброс временных состояний
             cableStart = null;
             if (wallDrawing) { wallDrawing.tempLine?.destroy(); wallDrawing.tempText?.destroy(); wallDrawing = null; }
             if (calibLine) { calibLine.destroy(); calibLine = null; calibStartPos = null; calibrating = false; }
+            if (rulerLine) { rulerLine.destroy(); rulerLine = null; rulerText.destroy(); rulerText = null; rulerPoints = []; }
             clearSelection();
             layer.draw();
         }
@@ -207,7 +233,7 @@
         function clearSelection() {
             if (rotateHandle) { rotateHandle.destroy(); rotateHandle = null; }
             selectedCamera = null;
-            contextMenu.style.display = 'none';
+            document.getElementById('contextMenu').style.display = 'none';
             contextTarget = null;
         }
 
@@ -217,103 +243,127 @@
         document.getElementById('switchBtn').onclick = () => setActiveTool('switch');
         document.getElementById('nvrBtn').onclick = () => setActiveTool('nvr');
         document.getElementById('cableBtn').onclick = () => setActiveTool('cable');
+        document.getElementById('rulerBtn').onclick = () => setActiveTool('ruler');
         document.getElementById('deleteBtn').onclick = () => setActiveTool('delete');
         document.getElementById('calibrateBtn').onclick = () => { calibrating = true; setActiveTool('calibrate'); };
 
-        // -------------------- КОНТЕКСТНОЕ МЕНЮ --------------------
-        document.getElementById('ctxRotate').addEventListener('click', () => {
-            if (!contextTarget || contextTarget.type !== 'camera') { contextMenu.style.display = 'none'; return; }
-            const cam = cameras[contextTarget.index];
-            selectedCamera = cam;
-            rotatingFromMenu = true;
-            // Запускаем режим вращения: создаём ручку
-            const angle = cam.angle || 80;
-            const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
-            const half = (angle / 2) * Math.PI / 180;
-            const dPx = dist * pixelsPerMeter;
-            const x = cam.circle.x() + Math.cos(cam.direction + half) * dPx;
-            const y = cam.circle.y() + Math.sin(cam.direction + half) * dPx;
-            if (rotateHandle) rotateHandle.destroy();
-            rotateHandle = new Konva.Circle({ x, y, radius: 6, fill: 'red', draggable: true });
-            layer.add(rotateHandle);
-            rotateHandle.on('dragmove', () => {
-                const dx = rotateHandle.x() - cam.circle.x();
-                const dy = rotateHandle.y() - cam.circle.y();
-                let newAngle = Math.atan2(dy, dx);
-                cam.direction = newAngle - half;
-                updateCameraSector(cam);
-                const newHalf = (cam.angle / 2) * Math.PI / 180;
-                const newD = dist * pixelsPerMeter;
-                rotateHandle.position({
-                    x: cam.circle.x() + Math.cos(cam.direction + newHalf) * newD,
-                    y: cam.circle.y() + Math.sin(cam.direction + newHalf) * newD
-                });
-                layer.batchDraw();
-            });
-            contextMenu.style.display = 'none';
-            layer.draw();
+        // ======================== ФОН ========================
+        document.getElementById('bgBtn').addEventListener('click', () => document.getElementById('bgFileInput').click());
+        document.getElementById('bgFileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    backgroundImage = img;
+                    layer.draw();
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
         });
+        document.getElementById('bgOpacity').addEventListener('input', () => layer.draw());
 
-        document.getElementById('ctxDelete').addEventListener('click', () => {
-            if (!contextTarget) { contextMenu.style.display = 'none'; return; }
-            if (contextTarget.type === 'camera') {
-                cameras[contextTarget.index].circle.destroy();
-                cameras[contextTarget.index].text.destroy();
-                cameras[contextTarget.index].sector.destroy();
-                cameras.splice(contextTarget.index, 1);
-            } else if (contextTarget.type === 'wall') {
-                const wall = walls[contextTarget.index];
-                wall.line.destroy();
-                if (wall.text) wall.text.destroy();
-                if (wall.handles) wall.handles.forEach(h => h.destroy());
-                walls.splice(contextTarget.index, 1);
+        // Фоновая отрисовка
+        const originalDraw = layer.draw.bind(layer);
+        layer.draw = function() {
+            const ctx = layer.getContext();
+            originalDraw();
+            if (backgroundImage) {
+                ctx.save();
+                ctx.globalAlpha = document.getElementById('bgOpacity').value / 100;
+                ctx.drawImage(backgroundImage, 0, 0, stage.width(), stage.height());
+                ctx.restore();
             }
-            layer.draw();
-            updateTotalLength();
-            contextMenu.style.display = 'none';
+        };
+
+        // ======================== РИСОВАНИЕ СТЕН ========================
+        let isDrawingWall = false, wallStart = null, tempWallLine = null, tempWallText = null;
+        stage.on('mousedown', (e) => {
+            if (activeTool !== 'wall' || e.target !== stage) return;
+            isDrawingWall = true;
+            const pos = stage.getPointerPosition();
+            wallStart = pos;
+            tempWallLine = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y], stroke: 'red', strokeWidth: 2, dash: [10, 5] });
+            tempWallText = new Konva.Text({ x: pos.x + 5, y: pos.y - 15, text: '0 м', fontSize: 14, fill: 'red' });
+            layer.add(tempWallLine);
+            layer.add(tempWallText);
         });
 
-        // Показать контекстное меню
-        function showContextMenu(e, target) {
-            e.evt.preventDefault();
-            contextTarget = target;
-            const menu = document.getElementById('contextMenu');
-            menu.style.display = 'block';
-            const containerRect = stage.container().getBoundingClientRect();
-            menu.style.left = (e.evt.clientX - containerRect.left) + 'px';
-            menu.style.top = (e.evt.clientY - containerRect.top) + 'px';
-        }
+        stage.on('mousemove', () => {
+            if (!isDrawingWall || activeTool !== 'wall') return;
+            const pos = stage.getPointerPosition();
+            tempWallLine.points([wallStart.x, wallStart.y, pos.x, pos.y]);
+            const lenPx = Math.hypot(pos.x - wallStart.x, pos.y - wallStart.y);
+            tempWallText.text(`${(lenPx / pixelsPerMeter).toFixed(2)} м`);
+            tempWallText.position({ x: (wallStart.x + pos.x) / 2 + 5, y: (wallStart.y + pos.y) / 2 - 15 });
+            layer.batchDraw();
+        });
 
-        // -------------------- ОБРАБОТЧИКИ СОБЫТИЙ --------------------
+        stage.on('mouseup', () => {
+            if (!isDrawingWall || activeTool !== 'wall') return;
+            isDrawingWall = false;
+            const pos = stage.getPointerPosition();
+            tempWallLine.destroy();
+            tempWallText.destroy();
+            const dx = pos.x - wallStart.x, dy = pos.y - wallStart.y;
+            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) { layer.draw(); return; }
+            const line = new Konva.Line({ points: [wallStart.x, wallStart.y, pos.x, pos.y], stroke: 'black', strokeWidth: 4 });
+            const text = new Konva.Text({ fontSize: 14, fill: 'red', listening: false });
+            const handle1 = new Konva.Circle({ x: wallStart.x, y: wallStart.y, radius: 6, fill: 'rgba(255,0,0,0.6)', draggable: true });
+            const handle2 = new Konva.Circle({ x: pos.x, y: pos.y, radius: 6, fill: 'rgba(255,0,0,0.6)', draggable: true });
+            const wallObj = { id: generateId(), line, text, handles: [handle1, handle2] };
+            updateWallLength(wallObj);
+            const updateFromHandles = () => {
+                const pts = wallObj.line.points();
+                pts[0] = handle1.x(); pts[1] = handle1.y();
+                pts[2] = handle2.x(); pts[3] = handle2.y();
+                wallObj.line.points(pts);
+                updateWallLength(wallObj);
+                layer.batchDraw();
+            };
+            handle1.on('dragmove', updateFromHandles);
+            handle2.on('dragmove', updateFromHandles);
+            line.on('contextmenu', (e) => { showContextMenu(e, { type: 'wall', index: walls.length }); });
+            layer.add(line);
+            layer.add(text);
+            layer.add(handle1);
+            layer.add(handle2);
+            walls.push(wallObj);
+            layer.draw();
+        });
+
+        // ======================== РАЗМЕЩЕНИЕ ОБОРУДОВАНИЯ ========================
         stage.on('click', (e) => {
-            // Игнорируем правый клик
             if (e.evt.button === 2) return;
             contextMenu.style.display = 'none';
             const pos = stage.getPointerPosition();
             const target = e.target;
 
-            // Размещение оборудования (только холст)
             if (activeTool === 'camera' && target === stage) {
                 const angle = parseFloat(document.getElementById('fovAngle').value) || 80;
                 const id = generateId();
                 const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: 14, fill: '#4a90e2', stroke: 'black', strokeWidth: 2, draggable: true });
                 const text = new Konva.Text({ x: pos.x - 6, y: pos.y - 7, text: 'K' + (cameras.length + 1), fontSize: 12, fill: 'white', listening: false });
                 const sector = new Konva.Line({ fill: 'rgba(255,165,0,0.2)', stroke: 'orange', strokeWidth: 1, closed: true, listening: false });
-                layer.add(sector); layer.add(circle); layer.add(text);
-                const cam = { id, circle, text, sector, angle, direction: 0 };
+                const warningCircle = new Konva.Circle({ x: pos.x + 10, y: pos.y - 10, radius: 5, fill: 'red', visible: false, listening: false });
+                layer.add(sector); layer.add(circle); layer.add(text); layer.add(warningCircle);
+                const cam = { id, circle, text, sector, angle, direction: 0, warning: warningCircle };
                 updateCameraSector(cam);
                 cameras.push(cam);
                 circle.on('dragmove', () => {
                     text.position({ x: circle.x() - 6, y: circle.y() - 7 });
+                    warningCircle.position({ x: circle.x() + 10, y: circle.y() - 10 });
                     updateCameraSector(cam);
                     cables.forEach(c => { if ((c.from.type === 'camera' && c.from.id === id) || (c.to.type === 'camera' && c.to.id === id)) updateCableEndpoints(c); });
                     layer.batchDraw(); updateTotalLength();
                 });
-                // Правый клик на камере
                 circle.on('contextmenu', (e) => { showContextMenu(e, { type: 'camera', index: cameras.indexOf(cam) }); });
                 layer.draw();
                 setActiveTool('select');
-            } else if (activeTool === 'switch' && target === stage) {
+            }
+            else if (activeTool === 'switch' && target === stage) {
                 const id = generateId();
                 const rect = new Konva.Rect({ x: pos.x - 20, y: pos.y - 10, width: 40, height: 20, fill: '#50c878', stroke: 'black', strokeWidth: 2, draggable: true });
                 const text = new Konva.Text({ x: pos.x - 12, y: pos.y - 7, text: 'SW' + (switches.length + 1), fontSize: 11, fill: 'white', listening: false });
@@ -326,7 +376,8 @@
                 });
                 layer.draw();
                 setActiveTool('select');
-            } else if (activeTool === 'nvr' && target === stage) {
+            }
+            else if (activeTool === 'nvr' && target === stage) {
                 const id = generateId();
                 const rect = new Konva.Rect({ x: pos.x - 25, y: pos.y - 15, width: 50, height: 30, fill: '#ff8c00', stroke: 'black', strokeWidth: 2, draggable: true });
                 const text = new Konva.Text({ x: pos.x - 15, y: pos.y - 8, text: 'NVR', fontSize: 12, fill: 'white', listening: false });
@@ -362,13 +413,66 @@
                     updateTotalLength();
                 }
             }
+            // Линейка
+            else if (activeTool === 'ruler') {
+                if (rulerPoints.length === 0) {
+                    rulerPoints[0] = pos;
+                } else {
+                    rulerPoints[1] = pos;
+                    if (rulerLine) rulerLine.destroy();
+                    if (rulerText) rulerText.destroy();
+                    const dist = Math.hypot(pos.x - rulerPoints[0].x, pos.y - rulerPoints[0].y);
+                    rulerLine = new Konva.Line({ points: [rulerPoints[0].x, rulerPoints[0].y, pos.x, pos.y], stroke: '#f39c12', strokeWidth: 2, dash: [10, 5] });
+                    rulerText = new Konva.Text({ x: (rulerPoints[0].x + pos.x) / 2, y: (rulerPoints[0].y + pos.y) / 2 - 10, text: `${(dist / pixelsPerMeter).toFixed(2)} м`, fontSize: 14, fill: '#f39c12' });
+                    layer.add(rulerLine); layer.add(rulerText);
+                    layer.draw();
+                    rulerPoints = [];
+                }
+            }
             // Удаление
             else if (activeTool === 'delete') {
-                // ... (аналогично предыдущему коду, удаление камер, свитчей, NVR, стен, кабелей)
+                // камеры
+                for (let i = cameras.length - 1; i >= 0; i--) {
+                    if (cameras[i].circle === target) {
+                        cameras[i].circle.destroy(); cameras[i].text.destroy(); cameras[i].sector.destroy(); cameras[i].warning.destroy();
+                        cables = cables.filter(c => !(c.from.type === 'camera' && c.from.id === cameras[i].id) && !(c.to.type === 'camera' && c.to.id === cameras[i].id));
+                        cameras.splice(i, 1); layer.draw(); updateTotalLength(); return;
+                    }
+                }
+                // свитчи
+                for (let i = switches.length - 1; i >= 0; i--) {
+                    if (switches[i].rect === target) {
+                        switches[i].rect.destroy(); switches[i].text.destroy();
+                        cables = cables.filter(c => !(c.from.type === 'switch' && c.from.id === switches[i].id) && !(c.to.type === 'switch' && c.to.id === switches[i].id));
+                        switches.splice(i, 1); layer.draw(); updateTotalLength(); return;
+                    }
+                }
+                // NVR
+                for (let i = nvrs.length - 1; i >= 0; i--) {
+                    if (nvrs[i].rect === target) {
+                        nvrs[i].rect.destroy(); nvrs[i].text.destroy();
+                        cables = cables.filter(c => !(c.from.type === 'nvr' && c.from.id === nvrs[i].id) && !(c.to.type === 'nvr' && c.to.id === nvrs[i].id));
+                        nvrs.splice(i, 1); layer.draw(); updateTotalLength(); return;
+                    }
+                }
+                // стены
+                for (let i = walls.length - 1; i >= 0; i--) {
+                    if (walls[i].line === target) {
+                        walls[i].line.destroy(); walls[i].text.destroy(); walls[i].handles.forEach(h => h.destroy());
+                        walls.splice(i, 1); layer.draw(); return;
+                    }
+                }
+                // кабели
+                for (let i = cables.length - 1; i >= 0; i--) {
+                    if (cables[i].line === target) {
+                        cables[i].line.destroy();
+                        cables.splice(i, 1); layer.draw(); updateTotalLength(); return;
+                    }
+                }
             }
         });
 
-        // Правый клик для контекстного меню (стены тоже)
+        // Правый клик
         stage.on('contextmenu', (e) => {
             const target = e.target;
             for (let i = 0; i < cameras.length; i++) {
@@ -379,10 +483,64 @@
             }
         });
 
-        // Shift+колесо для вращения выбранной камеры
+        function showContextMenu(e, target) {
+            e.evt.preventDefault();
+            contextTarget = target;
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            const containerRect = stage.container().getBoundingClientRect();
+            menu.style.left = (e.evt.clientX - containerRect.left) + 'px';
+            menu.style.top = (e.evt.clientY - containerRect.top) + 'px';
+        }
+
+        // Контекстное меню
+        document.getElementById('ctxRotate').addEventListener('click', () => {
+            if (!contextTarget || contextTarget.type !== 'camera') { document.getElementById('contextMenu').style.display = 'none'; return; }
+            const cam = cameras[contextTarget.index];
+            selectedCamera = cam;
+            const angle = cam.angle || 80;
+            const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
+            const half = (angle / 2) * Math.PI / 180;
+            const dPx = dist * pixelsPerMeter;
+            const x = cam.circle.x() + Math.cos(cam.direction + half) * dPx;
+            const y = cam.circle.y() + Math.sin(cam.direction + half) * dPx;
+            if (rotateHandle) rotateHandle.destroy();
+            rotateHandle = new Konva.Circle({ x, y, radius: 6, fill: 'red', draggable: true });
+            layer.add(rotateHandle);
+            rotateHandle.on('dragmove', () => {
+                const dx = rotateHandle.x() - cam.circle.x();
+                const dy = rotateHandle.y() - cam.circle.y();
+                let newAngle = Math.atan2(dy, dx);
+                cam.direction = newAngle - half;
+                updateCameraSector(cam);
+                const newHalf = (cam.angle / 2) * Math.PI / 180;
+                const newD = dist * pixelsPerMeter;
+                rotateHandle.position({ x: cam.circle.x() + Math.cos(cam.direction + newHalf) * newD, y: cam.circle.y() + Math.sin(cam.direction + newHalf) * newD });
+                layer.batchDraw();
+            });
+            document.getElementById('contextMenu').style.display = 'none';
+            layer.draw();
+        });
+
+        document.getElementById('ctxDelete').addEventListener('click', () => {
+            if (!contextTarget) { document.getElementById('contextMenu').style.display = 'none'; return; }
+            if (contextTarget.type === 'camera') {
+                const idx = contextTarget.index;
+                cameras[idx].circle.destroy(); cameras[idx].text.destroy(); cameras[idx].sector.destroy(); cameras[idx].warning.destroy();
+                cables = cables.filter(c => !(c.from.type === 'camera' && c.from.id === cameras[idx].id) && !(c.to.type === 'camera' && c.to.id === cameras[idx].id));
+                cameras.splice(idx, 1);
+            } else if (contextTarget.type === 'wall') {
+                const idx = contextTarget.index;
+                walls[idx].line.destroy(); walls[idx].text.destroy(); walls[idx].handles.forEach(h => h.destroy());
+                walls.splice(idx, 1);
+            }
+            layer.draw(); updateTotalLength();
+            document.getElementById('contextMenu').style.display = 'none';
+        });
+
+        // Shift+колесо
         stage.on('wheel', (e) => {
-            if (!selectedCamera) return;
-            if (!e.evt.shiftKey) return;
+            if (!selectedCamera || !e.evt.shiftKey) return;
             e.evt.preventDefault();
             const delta = e.evt.deltaY > 0 ? -0.05 : 0.05;
             selectedCamera.direction += delta;
@@ -399,63 +557,7 @@
             layer.batchDraw();
         });
 
-        // -------------------- РИСОВАНИЕ СТЕН --------------------
-        let isDrawingWall = false, wallStart = null, tempWallLine = null, tempWallText = null;
-        stage.on('mousedown', (e) => {
-            if (activeTool !== 'wall') return;
-            if (e.target !== stage) return; // только холст
-            isDrawingWall = true;
-            const pos = stage.getPointerPosition();
-            wallStart = pos;
-            tempWallLine = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y], stroke: 'red', strokeWidth: 2, dash: [10, 5] });
-            tempWallText = new Konva.Text({ x: pos.x + 5, y: pos.y - 15, text: '0 м', fontSize: 14, fill: 'red' });
-            layer.add(tempWallLine);
-            layer.add(tempWallText);
-        });
-        stage.on('mousemove', () => {
-            if (!isDrawingWall || activeTool !== 'wall') return;
-            const pos = stage.getPointerPosition();
-            tempWallLine.points([wallStart.x, wallStart.y, pos.x, pos.y]);
-            const lenPx = Math.hypot(pos.x - wallStart.x, pos.y - wallStart.y);
-            tempWallText.text(`${(lenPx / pixelsPerMeter).toFixed(2)} м`);
-            tempWallText.position({ x: (wallStart.x + pos.x) / 2 + 5, y: (wallStart.y + pos.y) / 2 - 15 });
-            layer.batchDraw();
-        });
-        stage.on('mouseup', () => {
-            if (!isDrawingWall || activeTool !== 'wall') return;
-            isDrawingWall = false;
-            const pos = stage.getPointerPosition();
-            tempWallLine.destroy();
-            tempWallText.destroy();
-            const dx = pos.x - wallStart.x, dy = pos.y - wallStart.y;
-            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-            const line = new Konva.Line({ points: [wallStart.x, wallStart.y, pos.x, pos.y], stroke: 'black', strokeWidth: 4 });
-            const text = new Konva.Text({ fontSize: 14, fill: 'red', listening: false });
-            const handle1 = new Konva.Circle({ x: wallStart.x, y: wallStart.y, radius: 6, fill: 'rgba(255,0,0,0.6)', draggable: true });
-            const handle2 = new Konva.Circle({ x: pos.x, y: pos.y, radius: 6, fill: 'rgba(255,0,0,0.6)', draggable: true });
-            const wallObj = { id: generateId(), line, text, handles: [handle1, handle2] };
-            updateWallLength(wallObj);
-            // Перетаскивание ручек
-            const updateFromHandles = () => {
-                const pts = wallObj.line.points();
-                pts[0] = handle1.x(); pts[1] = handle1.y();
-                pts[2] = handle2.x(); pts[3] = handle2.y();
-                wallObj.line.points(pts);
-                updateWallLength(wallObj);
-                layer.batchDraw();
-            };
-            handle1.on('dragmove', updateFromHandles);
-            handle2.on('dragmove', updateFromHandles);
-            line.on('contextmenu', (e) => { showContextMenu(e, { type: 'wall', index: walls.length }); });
-            layer.add(line);
-            layer.add(text);
-            layer.add(handle1);
-            layer.add(handle2);
-            walls.push(wallObj);
-            layer.draw();
-        });
-
-        // -------------------- КАЛИБРОВКА --------------------
+        // ======================== КАЛИБРОВКА ========================
         document.getElementById('calibrateBtn').addEventListener('click', () => {
             if (calibLine) {
                 const pts = calibLine.points();
@@ -467,14 +569,11 @@
                     cameras.forEach(cam => updateCameraSector(cam));
                     cables.forEach(c => updateCableEndpoints(c));
                     updateTotalLength();
+                    layer.draw();
                 }
                 calibLine.destroy(); calibLine = null; calibStartPos = null;
-                layer.draw();
                 calibrating = false;
                 setActiveTool('select');
-            } else {
-                calibrating = true;
-                setActiveTool('calibrate');
             }
         });
         stage.on('mousedown', (e) => {
@@ -493,12 +592,23 @@
         });
         stage.on('mouseup', () => { });
 
-        // -------------------- ЭКСПОРТ КП --------------------
+        // ======================== ЭКСПОРТ КП ========================
         document.getElementById('exportKPbtn').addEventListener('click', () => {
-            // ... (аналогично предыдущему)
+            let html = '<html><head><meta charset="utf-8"><title>КП</title><style>body{font-family:Arial} table{border-collapse:collapse;width:100%} td,th{border:1px solid #000;padding:5px}</style></head><body>';
+            html += '<h1>Коммерческое предложение</h1><table>';
+            html += '<tr><th>Оборудование</th><th>Кол-во</th></tr>';
+            html += `<tr><td>Камеры</td><td>${cameras.length}</td></tr>`;
+            html += `<tr><td>Свитчи</td><td>${switches.length}</td></tr>`;
+            html += `<tr><td>Видеорегистраторы</td><td>${nvrs.length}</td></tr>`;
+            html += `<tr><td>Кабель</td><td>${document.getElementById('totalLength').textContent} м</td></tr>`;
+            html += '</table></body></html>';
+            const win = window.open('', '_blank', 'width=800,height=600');
+            win.document.write(html);
+            win.document.close();
+            win.print();
         });
 
-        // -------------------- СТАРТ --------------------
+        // ======================== СТАРТ ========================
         setActiveTool('select');
         layer.draw();
         updateTotalLength();
