@@ -2,9 +2,9 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Видео Помощник: Планировщик CCTV</title>
+  <title>Видео Помощник: Планировщик CCTV (v.2.0)</title>
   <style>
-    body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
     #toolbar {
       position: absolute; top: 10px; left: 10px; z-index: 10;
       background: rgba(255,255,255,0.95); padding: 12px; border-radius: 8px;
@@ -26,6 +26,7 @@
 <body>
   <div id="toolbar">
     <div>
+      <button id="selectBtn">🖱 Выбор</button>
       <button id="wallBtn">🧱 Стена</button>
       <button id="cameraBtn">📷 Камера</button>
       <button id="switchBtn">🔀 Свитч</button>
@@ -33,7 +34,7 @@
       <button id="cableBtn">🔌 Кабель</button>
       <button id="deleteBtn">🗑 Удалить</button>
       <button id="calibrateBtn">📐 Калибровать</button>
-      <button id="exportKPbtn">📄 Скачать КП</button>
+      <button id="exportKPbtn">📄 КП</button>
     </div>
     <div class="settings">
       <label>Угол обзора:</label>
@@ -45,9 +46,7 @@
         <option value="straight">По прямой</option>
         <option value="walls">Вдоль стен</option>
       </select>
-    </div>
-    <div style="font-size:12px; color:#555; margin-top:5px;">
-      Кабель: кликнете по первому устройству, затем по второму.
+      <br><small>Вращение камеры: Shift+колёсико или тяни за маркер при выбранной камере.</small>
     </div>
   </div>
 
@@ -67,23 +66,38 @@
     let pixelsPerMeter = 20;
     let activeTool = 'select';
     let traceMode = 'straight';
-    document.getElementById('traceMode').addEventListener('change', function(e) {
+    document.getElementById('traceMode').addEventListener('change', (e) => {
       traceMode = e.target.value;
-      // Пересчитаем все кабели при смене режима
       cables.forEach(c => updateCableEndpoints(c));
       layer.batchDraw();
       updateTotalLength();
     });
 
-    let walls = [], cameras = [], switches = [], nvrs = [], cables = [];
+    // Хранилища объектов
+    let walls = [];      // { id, line, text }
+    let cameras = [];    // { id, circle, text, sector, angle }
+    let switches = [];   // { id, rect, text }
+    let nvrs = [];       // { id, rect, text }
+    let cables = [];     // { id, line, from, to }
+
+    // Временные состояния
+    let wallDrawing = null;       // для рисования стены
+    let cableStart = null;       // для начала кабеля
+    let calibrating = false;     // режим калибровки
+    let calibLine = null;
+    let calibStartPos = null;
+    let selectedCamera = null;   // выбранная камера (для вращения)
+    let rotateHandle = null;     // маркер вращения
 
     // ======================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ========================
     function generateId() { return Math.random().toString(36).substr(2, 9); }
+
     function getObjectCenter(type, id) {
       if (type === 'camera') { const c = cameras.find(c=>c.id===id); return c ? {x:c.circle.x(), y:c.circle.y()} : null; }
       if (type === 'switch')  { const s = switches.find(s=>s.id===id); return s ? {x:s.rect.x()+s.rect.width()/2, y:s.rect.y()+s.rect.height()/2} : null; }
       if (type === 'nvr')     { const n = nvrs.find(n=>n.id===id); return n ? {x:n.rect.x()+n.rect.width()/2, y:n.rect.y()+n.rect.height()/2} : null; }
     }
+
     function updateCableEndpoints(cableObj) {
       const f = getObjectCenter(cableObj.from.type, cableObj.from.id);
       const t = getObjectCenter(cableObj.to.type, cableObj.to.id);
@@ -91,24 +105,31 @@
       const pts = traceMode === 'straight' ? [f.x, f.y, t.x, t.y] : calculateWallPath(f, t);
       cableObj.line.points(pts);
     }
+
+    // Алгоритм огибания стен
     function calculateWallPath(from, to) {
       if (traceMode !== 'walls') return [from.x, from.y, to.x, to.y];
+      // Проверяем пересечение со всеми стенами
       for (let wall of walls) {
         const pts = wall.line.points();
         if (segmentsIntersect(from.x, from.y, to.x, to.y, pts[0], pts[1], pts[2], pts[3])) {
-          // Возвращаем путь через оба угла как вариант (для простоты возьмём первый угол)
-          const corner = {x: pts[0], y: pts[1]};
+          // Выбираем угол стены, ближайший к прямой
+          const d1 = Math.hypot(from.x-pts[0], from.y-pts[1]) + Math.hypot(pts[0]-to.x, pts[1]-to.y);
+          const d2 = Math.hypot(from.x-pts[2], from.y-pts[3]) + Math.hypot(pts[2]-to.x, pts[3]-to.y);
+          const corner = d1 < d2 ? {x: pts[0], y: pts[1]} : {x: pts[2], y: pts[3]};
           return [from.x, from.y, corner.x, corner.y, to.x, to.y];
         }
       }
       return [from.x, from.y, to.x, to.y];
     }
+
     function segmentsIntersect(x1,y1,x2,y2,x3,y3,x4,y4) {
-      function turn(Ax,Ay,Bx,By,Cx,Cy) { return (Bx-Ax)*(Cy-Ay) - (By-Ay)*(Cx-Ax); }
+      function turn(ax,ay,bx,by,cx,cy) { return (bx-ax)*(cy-ay) - (by-ay)*(cx-ax); }
       const t1 = turn(x1,y1,x2,y2,x3,y3), t2 = turn(x1,y1,x2,y2,x4,y4);
       const t3 = turn(x3,y3,x4,y4,x1,y1), t4 = turn(x3,y3,x4,y4,x2,y2);
       return (t1*t2 < 0) && (t3*t4 < 0);
     }
+
     function updateTotalLength() {
       let totalPx = 0;
       cables.forEach(c => {
@@ -118,6 +139,7 @@
       document.getElementById('totalLength').textContent = (totalPx/pixelsPerMeter).toFixed(2);
       document.getElementById('scaleDisplay').textContent = `Масштаб: ${pixelsPerMeter.toFixed(1)} px/м`;
     }
+
     function updateWallLength(wall) {
       const pts = wall.line.points();
       const lenPx = Math.hypot(pts[2]-pts[0], pts[3]-pts[1]);
@@ -125,7 +147,18 @@
       wall.text.position({ x: (pts[0]+pts[2])/2 - 20, y: (pts[1]+pts[3])/2 - 20 });
     }
 
-    // ======================== ИНИЦИАЛИЗАЦИЯ СЕТКИ ========================
+    // Обновление сектора камеры
+    function updateCameraSector(cam) {
+      const angle = cam.angle || 80;
+      const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
+      const half = (angle/2) * Math.PI/180;
+      const dPx = dist * pixelsPerMeter;
+      const pts = [cam.circle.x(), cam.circle.y()];
+      for(let a=-half; a<=half; a+=0.1) pts.push(cam.circle.x()+Math.cos(a)*dPx, cam.circle.y()+Math.sin(a)*dPx);
+      cam.sector.points(pts);
+    }
+
+    // ======================== СЕТКА ========================
     for(let i=0; i<stage.width(); i+=20) layer.add(new Konva.Line({points:[i,0,i,stage.height()], stroke:'#eee', strokeWidth:0.5, listening:false}));
     for(let j=0; j<stage.height(); j+=20) layer.add(new Konva.Line({points:[0,j,stage.width(),j], stroke:'#eee', strokeWidth:0.5, listening:false}));
 
@@ -133,36 +166,40 @@
     function setActiveTool(tool) {
       activeTool = tool;
       document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
-      if (tool === 'wall') document.getElementById('wallBtn').classList.add('active');
+      if (tool === 'select') document.getElementById('selectBtn').classList.add('active');
+      else if (tool === 'wall') document.getElementById('wallBtn').classList.add('active');
       else if (tool === 'camera') document.getElementById('cameraBtn').classList.add('active');
       else if (tool === 'switch') document.getElementById('switchBtn').classList.add('active');
       else if (tool === 'nvr') document.getElementById('nvrBtn').classList.add('active');
       else if (tool === 'cable') document.getElementById('cableBtn').classList.add('active');
       else if (tool === 'delete') document.getElementById('deleteBtn').classList.add('active');
       else if (tool === 'calibrate') document.getElementById('calibrateBtn').classList.add('active');
-      // сброс временных состояний
-      if (window._cableStart) window._cableStart = null;
-      if (window._wallDrawing) {
-        window._wallDrawing.tempLine?.destroy();
-        window._wallDrawing.tempText?.destroy();
-        window._wallDrawing = null;
-      }
-      if (window._calibLine) { window._calibLine.destroy(); window._calibLine = null; window._calibStart = null; }
+      // Сброс временных состояний
+      cableStart = null;
+      if (wallDrawing) { wallDrawing.tempLine?.destroy(); wallDrawing.tempText?.destroy(); wallDrawing = null; }
+      if (calibLine) { calibLine.destroy(); calibLine = null; calibStartPos = null; calibrating = false; }
+      clearSelection();
       layer.draw();
     }
+
+    function clearSelection() {
+      if (rotateHandle) { rotateHandle.destroy(); rotateHandle = null; }
+      selectedCamera = null;
+    }
+
+    document.getElementById('selectBtn').onclick = () => setActiveTool('select');
     document.getElementById('wallBtn').onclick = () => setActiveTool('wall');
     document.getElementById('cameraBtn').onclick = () => setActiveTool('camera');
     document.getElementById('switchBtn').onclick = () => setActiveTool('switch');
     document.getElementById('nvrBtn').onclick = () => setActiveTool('nvr');
     document.getElementById('cableBtn').onclick = () => setActiveTool('cable');
     document.getElementById('deleteBtn').onclick = () => setActiveTool('delete');
-    document.getElementById('calibrateBtn').onclick = () => setActiveTool('calibrate');
+    document.getElementById('calibrateBtn').onclick = () => { calibrating = true; setActiveTool('calibrate'); };
 
-    // ======================== РИСОВАНИЕ СТЕН (ДИНАМИЧЕСКИЙ МЕТРАЖ) ========================
-    let wallDrawing = null; // { startX, startY, tempLine, tempText }
+    // ======================== РИСОВАНИЕ СТЕН ========================
     stage.on('mousedown', (e) => {
       if (activeTool !== 'wall') return;
-      if (e.target !== stage) return; // только пустое место
+      if (e.target !== stage) return;
       const pos = stage.getPointerPosition();
       wallDrawing = {
         startX: pos.x, startY: pos.y,
@@ -172,8 +209,9 @@
       layer.add(wallDrawing.tempLine);
       layer.add(wallDrawing.tempText);
     });
+
     stage.on('mousemove', () => {
-      if (!wallDrawing || activeTool !== 'wall') return;
+      if (!wallDrawing) return;
       const pos = stage.getPointerPosition();
       wallDrawing.tempLine.points([wallDrawing.startX, wallDrawing.startY, pos.x, pos.y]);
       const lenPx = Math.hypot(pos.x - wallDrawing.startX, pos.y - wallDrawing.startY);
@@ -181,15 +219,16 @@
       wallDrawing.tempText.position({ x: (wallDrawing.startX+pos.x)/2+5, y: (wallDrawing.startY+pos.y)/2-15 });
       layer.batchDraw();
     });
-    stage.on('mouseup', (e) => {
-      if (!wallDrawing || activeTool !== 'wall') return;
+
+    stage.on('mouseup', () => {
+      if (!wallDrawing) return;
       const pos = stage.getPointerPosition();
       const { startX, startY, tempLine, tempText } = wallDrawing;
       tempLine.destroy();
       tempText.destroy();
       wallDrawing = null;
       const dx = pos.x - startX, dy = pos.y - startY;
-      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) { layer.draw(); return; }
       const line = new Konva.Line({ points: [startX, startY, pos.x, pos.y], stroke: 'black', strokeWidth: 4, draggable: true });
       const text = new Konva.Text({ fontSize: 14, fill: 'red', listening: false });
       const wallObj = { id: generateId(), line, text };
@@ -200,67 +239,51 @@
       layer.draw();
     });
 
-    // ======================== РАЗМЕЩЕНИЕ ОБОРУДОВАНИЯ ПО КЛИКУ НА ПУСТОМ МЕСТЕ ========================
+    // ======================== РАЗМЕЩЕНИЕ ОБОРУДОВАНИЯ ========================
     stage.on('click', (e) => {
-      if (e.target !== stage) return; // обрабатываем только клик по холсту
+      if (activeTool !== 'camera' && activeTool !== 'switch' && activeTool !== 'nvr') return;
+      if (e.target !== stage) return;
       const pos = stage.getPointerPosition();
       if (activeTool === 'camera') {
         const angle = parseFloat(document.getElementById('fovAngle').value) || 80;
-        const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
         const id = generateId();
         const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: 14, fill: '#4a90e2', stroke: 'black', strokeWidth: 2, draggable: true });
         const text = new Konva.Text({ x: pos.x-6, y: pos.y-7, text: 'K'+(cameras.length+1), fontSize: 12, fill: 'white', listening: false });
-        const half = (angle/2) * Math.PI/180;
-        const dPx = dist * pixelsPerMeter;
-        const sectorPts = [pos.x, pos.y];
-        for(let a = -half; a <= half; a += 0.1) {
-          sectorPts.push(pos.x + Math.cos(a)*dPx, pos.y + Math.sin(a)*dPx);
-        }
-        const sector = new Konva.Line({ points: sectorPts, fill: 'rgba(255,165,0,0.2)', stroke: 'orange', strokeWidth: 1, closed: true, listening: false });
+        const sector = new Konva.Line({ fill: 'rgba(255,165,0,0.2)', stroke: 'orange', strokeWidth: 1, closed: true, listening: false });
         layer.add(sector); layer.add(circle); layer.add(text);
-        const cam = { id, circle, text, sector };
+        const cam = { id, circle, text, sector, angle };
+        updateCameraSector(cam);
         cameras.push(cam);
         circle.on('dragmove', () => {
           text.position({ x: circle.x()-6, y: circle.y()-7 });
-          const newAngle = parseFloat(document.getElementById('fovAngle').value) || 80;
-          const newDist = parseFloat(document.getElementById('fovDistance').value) || 10;
-          const half = (newAngle/2)*Math.PI/180;
-          const d = newDist * pixelsPerMeter;
-          const pts = [circle.x(), circle.y()];
-          for(let a=-half; a<=half; a+=0.1) pts.push(circle.x()+Math.cos(a)*d, circle.y()+Math.sin(a)*d);
-          sector.points(pts);
-          // обновить связанные кабели
+          updateCameraSector(cam);
           cables.forEach(c => { if ((c.from.type==='camera' && c.from.id===id) || (c.to.type==='camera' && c.to.id===id)) updateCableEndpoints(c); });
           layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
         setActiveTool('select');
-      }
-      else if (activeTool === 'switch') {
+      } else if (activeTool === 'switch') {
         const id = generateId();
         const rect = new Konva.Rect({ x: pos.x-20, y: pos.y-10, width: 40, height: 20, fill: '#50c878', stroke: 'black', strokeWidth: 2, draggable: true });
         const text = new Konva.Text({ x: pos.x-12, y: pos.y-7, text: 'SW'+(switches.length+1), fontSize: 11, fill: 'white', listening: false });
         layer.add(rect); layer.add(text);
-        const sw = { id, rect, text };
-        switches.push(sw);
+        switches.push({ id, rect, text });
         rect.on('dragmove', () => {
           text.position({ x: rect.x()+8, y: rect.y()+3 });
-          cables.forEach(c => { if ((c.from.type==='switch' && c.from.id===id) || (c.to.type==='switch' && c.to.id===id)) updateCableEndpoints(c); });
+          cables.forEach(c => { if ((c.from.type==='switch'&&c.from.id===id)||(c.to.type==='switch'&&c.to.id===id)) updateCableEndpoints(c); });
           layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
         setActiveTool('select');
-      }
-      else if (activeTool === 'nvr') {
+      } else if (activeTool === 'nvr') {
         const id = generateId();
         const rect = new Konva.Rect({ x: pos.x-25, y: pos.y-15, width: 50, height: 30, fill: '#ff8c00', stroke: 'black', strokeWidth: 2, draggable: true });
         const text = new Konva.Text({ x: pos.x-15, y: pos.y-8, text: 'NVR', fontSize: 12, fill: 'white', listening: false });
         layer.add(rect); layer.add(text);
-        const nvrObj = { id, rect, text };
-        nvrs.push(nvrObj);
+        nvrs.push({ id, rect, text });
         rect.on('dragmove', () => {
           text.position({ x: rect.x()+8, y: rect.y()+8 });
-          cables.forEach(c => { if ((c.from.type==='nvr' && c.from.id===id) || (c.to.type==='nvr' && c.to.id===id)) updateCableEndpoints(c); });
+          cables.forEach(c => { if ((c.from.type==='nvr'&&c.from.id===id)||(c.to.type==='nvr'&&c.to.id===id)) updateCableEndpoints(c); });
           layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
@@ -268,9 +291,69 @@
       }
     });
 
-    // ======================== КАБЕЛЬ (ВЫБОР УСТРОЙСТВ) ========================
-    // Используем глобальную переменную для хранения начала кабеля
-    window._cableStart = null;
+    // ======================== ВЫБРАТЬ КАМЕРУ ДЛЯ ВРАЩЕНИЯ ========================
+    stage.on('click', (e) => {
+      if (activeTool !== 'select') return;
+      clearSelection();
+      const target = e.target;
+      let foundCam = null;
+      for (let cam of cameras) if (cam.circle === target) { foundCam = cam; break; }
+      if (!foundCam) return;
+      selectedCamera = foundCam;
+      // Рисуем маркер поворота (маленький круг на границе сектора)
+      const angle = foundCam.angle || 80;
+      const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
+      const half = (angle/2) * Math.PI/180;
+      const dPx = dist * pixelsPerMeter;
+      const x = foundCam.circle.x() + Math.cos(half)*dPx;
+      const y = foundCam.circle.y() + Math.sin(half)*dPx;
+      rotateHandle = new Konva.Circle({ x, y, radius: 6, fill: 'red', draggable: true });
+      layer.add(rotateHandle);
+      rotateHandle.on('dragmove', () => {
+        const dx = rotateHandle.x() - foundCam.circle.x();
+        const dy = rotateHandle.y() - foundCam.circle.y();
+        let newAngle = Math.atan2(dy, dx) * 180 / Math.PI * 2;
+        if (newAngle < 0) newAngle += 360;
+        if (newAngle < 10) newAngle = 10;
+        if (newAngle > 360) newAngle = 360;
+        foundCam.angle = newAngle;
+        updateCameraSector(foundCam);
+        // Переместить маркер
+        const newHalf = (foundCam.angle/2) * Math.PI/180;
+        const newD = dist * pixelsPerMeter;
+        rotateHandle.position({
+          x: foundCam.circle.x() + Math.cos(newHalf)*newD,
+          y: foundCam.circle.y() + Math.sin(newHalf)*newD
+        });
+        layer.batchDraw();
+      });
+      layer.draw();
+    });
+
+    // Shift+колесо для вращения выбранной камеры
+    stage.on('wheel', (e) => {
+      if (!selectedCamera) return;
+      if (!e.evt.shiftKey) return;
+      e.evt.preventDefault();
+      const delta = e.evt.deltaY > 0 ? -2 : 2;
+      let newAngle = (selectedCamera.angle || 80) + delta;
+      if (newAngle < 10) newAngle = 10;
+      if (newAngle > 360) newAngle = 360;
+      selectedCamera.angle = newAngle;
+      updateCameraSector(selectedCamera);
+      if (rotateHandle) {
+        const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
+        const half = (selectedCamera.angle/2) * Math.PI/180;
+        const dPx = dist * pixelsPerMeter;
+        rotateHandle.position({
+          x: selectedCamera.circle.x() + Math.cos(half)*dPx,
+          y: selectedCamera.circle.y() + Math.sin(half)*dPx
+        });
+      }
+      layer.batchDraw();
+    });
+
+    // ======================== ПРОКЛАДКА КАБЕЛЯ ========================
     stage.on('click', (e) => {
       if (activeTool !== 'cable') return;
       const target = e.target;
@@ -279,18 +362,17 @@
       for (let s of switches) if (s.rect === target) { found = { type: 'switch', id: s.id }; break; }
       for (let n of nvrs) if (n.rect === target) { found = { type: 'nvr', id: n.id }; break; }
       if (!found) return;
-      if (!window._cableStart) {
-        window._cableStart = found;
-        // Визуальная индикация: можно сделать небольшой маркер, но пока без
+      if (!cableStart) {
+        cableStart = found;
       } else {
-        if (window._cableStart.type === found.type && window._cableStart.id === found.id) return;
-        const fromCenter = getObjectCenter(window._cableStart.type, window._cableStart.id);
+        if (cableStart.type === found.type && cableStart.id === found.id) { cableStart = null; return; }
+        const fromCenter = getObjectCenter(cableStart.type, cableStart.id);
         const toCenter = getObjectCenter(found.type, found.id);
         const pts = traceMode === 'straight' ? [fromCenter.x, fromCenter.y, toCenter.x, toCenter.y] : calculateWallPath(fromCenter, toCenter);
         const line = new Konva.Line({ points: pts, stroke: 'red', strokeWidth: 2 });
         layer.add(line);
-        cables.push({ id: generateId(), line, from: window._cableStart, to: found });
-        window._cableStart = null;
+        cables.push({ id: generateId(), line, from: cableStart, to: found });
+        cableStart = null;
         setActiveTool('select');
         layer.draw();
         updateTotalLength();
@@ -341,28 +423,21 @@
       }
     });
 
-    // ======================== КАЛИБРОВКА МАСШТАБА ========================
-    let calibrating = false, calibStartPos, calibLine;
+    // ======================== КАЛИБРОВКА ========================
     document.getElementById('calibrateBtn').addEventListener('click', () => {
-      if (!calibrating) {
-        calibrating = true;
-        setActiveTool('calibrate');
-      } else {
-        if (calibLine) {
-          const pts = calibLine.points();
-          const lenPx = Math.hypot(pts[2]-pts[0], pts[3]-pts[1]);
-          const realM = parseFloat(prompt('Введите реальную длину этой линии в метрах:', '1'));
-          if (realM && realM > 0) {
-            pixelsPerMeter = lenPx / realM;
-            // Обновить длины всех стен и кабелей
-            walls.forEach(w => updateWallLength(w));
-            cables.forEach(c => updateCableEndpoints(c));
-            updateTotalLength();
-            layer.draw();
-          }
-          calibLine.destroy();
-          calibLine = null;
+      if (calibLine) {
+        const pts = calibLine.points();
+        const lenPx = Math.hypot(pts[2]-pts[0], pts[3]-pts[1]);
+        const realM = parseFloat(prompt('Введите реальную длину этой линии в метрах:', '1'));
+        if (realM && realM > 0) {
+          pixelsPerMeter = lenPx / realM;
+          walls.forEach(w => updateWallLength(w));
+          cameras.forEach(cam => updateCameraSector(cam));
+          cables.forEach(c => updateCableEndpoints(c));
+          updateTotalLength();
         }
+        calibLine.destroy(); calibLine = null; calibStartPos = null;
+        layer.draw();
         calibrating = false;
         setActiveTool('select');
       }
@@ -376,36 +451,30 @@
       layer.add(calibLine);
     });
     stage.on('mousemove', () => {
-      if (!calibLine || activeTool !== 'calibrate') return;
+      if (!calibLine) return;
       const pos = stage.getPointerPosition();
       calibLine.points([calibStartPos.x, calibStartPos.y, pos.x, pos.y]);
       layer.batchDraw();
     });
-    stage.on('mouseup', () => { /* ожидание повторного клика */ });
+    stage.on('mouseup', () => {});
 
     // ======================== ЭКСПОРТ КП ========================
     document.getElementById('exportKPbtn').addEventListener('click', () => {
-      let html = '<html><head><meta charset="utf-8"><title>Коммерческое предложение</title>';
-      html += '<style>body { font-family: Arial; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #000; padding: 5px; }</style></head><body>';
-      html += '<h1>Коммерческое предложение</h1>';
-      html += '<h2>Оборудование</h2>';
-      html += '<table><tr><th>Наименование</th><th>Кол-во</th></tr>';
+      let html = '<html><head><meta charset="utf-8"><title>КП</title><style>body{font-family:Arial} table{border-collapse:collapse;width:100%} td,th{border:1px solid #000;padding:5px}</style></head><body>';
+      html += '<h1>Коммерческое предложение</h1><table>';
+      html += '<tr><th>Оборудование</th><th>Кол-во</th></tr>';
       html += `<tr><td>Камеры</td><td>${cameras.length}</td></tr>`;
       html += `<tr><td>Свитчи</td><td>${switches.length}</td></tr>`;
       html += `<tr><td>Видеорегистраторы</td><td>${nvrs.length}</td></tr>`;
-      html += '</table>';
-      html += `<h2>Кабельная продукция</h2><p>Общая длина кабеля: ${document.getElementById('totalLength').textContent} м</p>`;
-      html += '<p><em>Масштаб схемы уточнён.</em></p>';
-      html += '</body></html>';
+      html += `<tr><td>Кабель</td><td>${document.getElementById('totalLength').textContent} м</td></tr>`;
+      html += '</table></body></html>';
       const win = window.open('', '_blank', 'width=800,height=600');
       win.document.write(html);
       win.document.close();
-      win.focus();
       win.print();
-      // win.close(); // не закрываем, чтобы можно было сохранить
     });
 
-    // ======================== ИНИЦИАЛИЗАЦИЯ ПО УМОЛЧАНИЮ ========================
+    // ======================== СТАРТ ========================
     setActiveTool('select');
     layer.draw();
     updateTotalLength();
