@@ -7,39 +7,34 @@
     body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     #toolbar {
       position: absolute; top: 10px; left: 10px; z-index: 10;
-      background: rgba(255,255,255,0.95); padding: 10px; border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      max-width: 300px;
+      background: rgba(255,255,255,0.95); padding: 12px; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
-    .toolbar-group { margin-bottom: 10px; }
-    .toolbar-group button {
-      margin: 2px 4px; padding: 6px 12px; border: 1px solid #ccc;
-      background: #f0f0f0; border-radius: 4px; cursor: pointer; font-size: 14px;
-    }
-    .toolbar-group button.active { background: #4a90e2; color: white; border-color: #357ab7; }
-    .cam-settings { margin: 8px 0; font-size: 12px; }
-    .cam-settings label { display: inline-block; width: 70px; }
-    .cam-settings input { width: 60px; }
+    button { margin: 3px; padding: 8px 14px; border: 1px solid #aaa; background: #f0f0f0; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    button.active { background: #4a90e2; color: white; border-color: #357ab7; }
+    .settings { margin-top: 10px; font-size: 13px; }
+    .settings label { display: inline-block; width: 80px; }
+    .settings input { width: 70px; }
     #stats {
       position: absolute; bottom: 10px; left: 10px; z-index: 10;
       background: rgba(255,255,255,0.95); padding: 10px; border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px;
     }
   </style>
   <script src="https://unpkg.com/konva@9/konva.min.js"></script>
 </head>
 <body>
   <div id="toolbar">
-    <div class="toolbar-group">
+    <div>
       <button id="wallBtn">🧱 Стена</button>
       <button id="cameraBtn">📷 Камера</button>
       <button id="switchBtn">🔀 Свитч</button>
-      <button id="nvrBtn">🖥 Регистратор</button>
+      <button id="nvrBtn">🖥 NVR</button>
       <button id="cableBtn">🔌 Кабель</button>
       <button id="deleteBtn">🗑 Удалить</button>
       <button id="calibrateBtn">📐 Калибровать</button>
     </div>
-    <div class="cam-settings">
+    <div class="settings">
       <label>Угол обзора:</label>
       <input id="fovAngle" type="number" value="80" step="1" min="10" max="360"> °<br>
       <label>Дальность:</label>
@@ -50,322 +45,231 @@
   <div id="stats">
     <strong>Общая длина кабеля: <span id="totalLength">0</span> м</strong><br>
     <span id="scaleDisplay">Масштаб: 20 px/м</span>
-    <small><em>Тяните стены и устройства, кабель пересчитывается автоматически.</em></small>
+    <br><small>Перетаскивайте стены/устройства — кабель обновляется автоматически.</small>
   </div>
 
   <div id="container"></div>
 
   <script>
-    // --------------------------- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---------------------------
-    const stage = new Konva.Stage({
-      container: 'container',
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const stage = new Konva.Stage({ container: 'container', width: window.innerWidth, height: window.innerHeight });
     const layer = new Konva.Layer();
     stage.add(layer);
 
     let pixelsPerMeter = 20;
     let activeTool = 'select';
-    let traceMode = 'straight'; // пока только прямой
+    let walls = [], cameras = [], switches = [], nvrs = [], cables = [];
 
-    // Хранилища
-    let walls = [];
-    let cameras = [];
-    let switches = [];
-    let nvrs = [];
-    let cables = [];
-
-    // Для кабеля
-    let cableStart = null;
-
-    // Для калибровки
-    let calibrating = false;
-    let calibStart = null;
-    let calibLine = null;
-
-    // Для стен
-    let isDrawingWall = false;
-    let wallStartPoint = null;
-    let tempWallLine = null;
-
-    // --------------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---------------------------
-    function generateId() {
-      return Math.random().toString(36).substr(2, 9);
-    }
-
+    // Вспомогательные функции
+    function generateId() { return Math.random().toString(36).substr(2, 9); }
     function getObjectCenter(type, id) {
-      // ... (без изменений как в предыдущей версии)
-            if (type === 'camera') {
-        const obj = cameras.find(c => c.id === id);
-        return obj ? { x: obj.circle.x(), y: obj.circle.y() } : null;
-      } else if (type === 'switch') {
-        const obj = switches.find(s => s.id === id);
-        return obj ? { x: obj.rect.x() + obj.rect.width()/2, y: obj.rect.y() + obj.rect.height()/2 } : null;
-      } else if (type === 'nvr') {
-        const obj = nvrs.find(n => n.id === id);
-        return obj ? { x: obj.rect.x() + obj.rect.width()/2, y: obj.rect.y() + obj.rect.height()/2 } : null;
-      }
-      return null;
+      if (type === 'camera') { const c = cameras.find(c=>c.id===id); return c ? {x:c.circle.x(), y:c.circle.y()} : null; }
+      if (type === 'switch')  { const s = switches.find(s=>s.id===id); return s ? {x:s.rect.x()+s.rect.width()/2, y:s.rect.y()+s.rect.height()/2} : null; }
+      if (type === 'nvr')     { const n = nvrs.find(n=>n.id===id); return n ? {x:n.rect.x()+n.rect.width()/2, y:n.rect.y()+n.rect.height()/2} : null; }
     }
-
     function updateCableEndpoints(cableObj) {
-      const fromCenter = getObjectCenter(cableObj.from.type, cableObj.from.id);
-      const toCenter = getObjectCenter(cableObj.to.type, cableObj.to.id);
-      if (fromCenter && toCenter) {
-        cableObj.line.points([fromCenter.x, fromCenter.y, toCenter.x, toCenter.y]);
-      }
+      const f = getObjectCenter(cableObj.from.type, cableObj.from.id);
+      const t = getObjectCenter(cableObj.to.type, cableObj.to.id);
+      if (f && t) cableObj.line.points([f.x, f.y, t.x, t.y]);
     }
-
     function updateTotalLength() {
       let totalPx = 0;
-      cables.forEach(c => {
-        const pts = c.line.points();
-        for (let i = 0; i < pts.length - 2; i += 2) {
-          const dx = pts[i+2] - pts[i];
-          const dy = pts[i+3] - pts[i+1];
-          totalPx += Math.sqrt(dx*dx + dy*dy);
-        }
-      });
-      const totalMeters = (totalPx / pixelsPerMeter).toFixed(2);
-      document.getElementById('totalLength').textContent = totalMeters;
-      document.getElementById('scaleDisplay').textContent = `Масштаб: ${pixelsPerMeter} px/м`;
+      cables.forEach(c => { const pts = c.line.points(); for(let i=0;i<pts.length-2;i+=2){ totalPx += Math.sqrt((pts[i+2]-pts[i])**2 + (pts[i+3]-pts[i+1])**2); } });
+      document.getElementById('totalLength').textContent = (totalPx/pixelsPerMeter).toFixed(2);
+      document.getElementById('scaleDisplay').textContent = `Масштаб: ${pixelsPerMeter.toFixed(1)} px/м`;
     }
-
     function updateWallLength(wall) {
       const pts = wall.line.points();
-      const dx = pts[2] - pts[0];
-      const dy = pts[3] - pts[1];
-      const lengthPx = Math.sqrt(dx*dx + dy*dy);
-      const lengthM = lengthPx / pixelsPerMeter;
-      wall.lengthText.text(`${lengthM.toFixed(2)} м`);
-      // Расположить текст посередине стены
-      wall.lengthText.position({
-        x: (pts[0] + pts[2]) / 2 - 20,
-        y: (pts[1] + pts[3]) / 2 - 20
-      });
+      const lenPx = Math.sqrt((pts[2]-pts[0])**2 + (pts[3]-pts[1])**2);
+      wall.text.text(`${(lenPx/pixelsPerMeter).toFixed(2)} м`);
+      wall.text.position({ x: (pts[0]+pts[2])/2 - 20, y: (pts[1]+pts[3])/2 - 20 });
     }
 
+    // Сетка
+    for(let i=0; i<stage.width(); i+=20) layer.add(new Konva.Line({points:[i,0,i,stage.height()], stroke:'#eee', strokeWidth:0.5, listening:false}));
+    for(let j=0; j<stage.height(); j+=20) layer.add(new Konva.Line({points:[0,j,stage.width(),j], stroke:'#eee', strokeWidth:0.5, listening:false}));
+
+    // Переключение инструментов
     function setActiveTool(tool) {
       activeTool = tool;
-      document.querySelectorAll('.toolbar-group button:not(#calibrateBtn)').forEach(b => b.classList.remove('active'));
-      if (tool === 'calibrate') document.getElementById('calibrateBtn').classList.add('active');
-      else if (tool === 'wall') document.getElementById('wallBtn').classList.add('active');
+      document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
+      if (tool === 'wall') document.getElementById('wallBtn').classList.add('active');
       else if (tool === 'camera') document.getElementById('cameraBtn').classList.add('active');
       else if (tool === 'switch') document.getElementById('switchBtn').classList.add('active');
       else if (tool === 'nvr') document.getElementById('nvrBtn').classList.add('active');
       else if (tool === 'cable') document.getElementById('cableBtn').classList.add('active');
       else if (tool === 'delete') document.getElementById('deleteBtn').classList.add('active');
-      cableStart = null;
+      else if (tool === 'calibrate') document.getElementById('calibrateBtn').classList.add('active');
+      // сброс временных состояний
+      if (window._cableStart) window._cableStart = null;
+      if (window._isDrawingWall) { if(window._tempWallLine) window._tempWallLine.destroy(); window._isDrawingWall = false; }
+      if (window._calibLine) { window._calibLine.destroy(); window._calibLine = null; window._calibStart = null; }
     }
 
-    // --------------------------- СЕТКА ---------------------------
-    function drawGrid() {
-      const gridSize = 20;
-      for (let i = 0; i < stage.width(); i += gridSize) {
-        layer.add(new Konva.Line({
-          points: [i, 0, i, stage.height()],
-          stroke: '#eee', strokeWidth: 0.5, listening: false,
-        }));
-      }
-      for (let j = 0; j < stage.height(); j += gridSize) {
-        layer.add(new Konva.Line({
-          points: [0, j, stage.width(), j],
-          stroke: '#eee', strokeWidth: 0.5, listening: false,
-        }));
-      }
-    }
-    drawGrid();
+    // Привязка кнопок
+    document.getElementById('wallBtn').onclick = () => setActiveTool('wall');
+    document.getElementById('cameraBtn').onclick = () => setActiveTool('camera');
+    document.getElementById('switchBtn').onclick = () => setActiveTool('switch');
+    document.getElementById('nvrBtn').onclick = () => setActiveTool('nvr');
+    document.getElementById('cableBtn').onclick = () => setActiveTool('cable');
+    document.getElementById('deleteBtn').onclick = () => setActiveTool('delete');
+    document.getElementById('calibrateBtn').onclick = () => setActiveTool('calibrate');
 
-    // --------------------------- ОБРАБОТЧИКИ СОБЫТИЙ ---------------------------
+    // Единый обработчик кликов по сцене (только по пустому месту)
     stage.on('click', (e) => {
-      if (e.target !== stage) return; // клик по пустому месту
+      if (e.target !== stage) return; // клик по объекту — обрабатываем отдельно
       const pos = stage.getPointerPosition();
-
+      
       if (activeTool === 'camera') {
-        const id = generateId();
         const angle = parseFloat(document.getElementById('fovAngle').value) || 80;
-        const distance = parseFloat(document.getElementById('fovDistance').value) || 10;
-        const radius = 15;
-        const circle = new Konva.Circle({
-          x: pos.x, y: pos.y, radius,
-          fill: '#4a90e2', stroke: 'black', strokeWidth: 2,
-          draggable: true,
-        });
-        const text = new Konva.Text({
-          x: pos.x - 8, y: pos.y - 7,
-          text: 'K' + (cameras.length + 1),
-          fontSize: 12, fill: 'white', listening: false,
-        });
-        // Сектор обзора
-        const halfAngle = (angle / 2) * Math.PI / 180;
-        const distPx = distance * pixelsPerMeter;
-        const points = [pos.x, pos.y];
-        for (let a = -halfAngle; a <= halfAngle; a += 0.1) {
-          points.push(pos.x + Math.cos(a) * distPx);
-          points.push(pos.y + Math.sin(a) * distPx);
-        }
-        const sector = new Konva.Line({
-          points,
-          fill: 'rgba(255,165,0,0.2)',
-          stroke: 'orange',
-          strokeWidth: 1,
-          closed: true,
-          listening: false,
-        });
-        layer.add(sector);
-        layer.add(circle);
-        layer.add(text);
-        cameras.push({ id, circle, text, sector, angle, distance });
-
+        const dist = parseFloat(document.getElementById('fovDistance').value) || 10;
+        const id = generateId();
+        const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: 14, fill: '#4a90e2', stroke: 'black', strokeWidth: 2, draggable: true });
+        const text = new Konva.Text({ x: pos.x-6, y: pos.y-7, text: 'K'+(cameras.length+1), fontSize: 12, fill: 'white', listening: false });
+        const half = (angle/2)*Math.PI/180;
+        const dPx = dist * pixelsPerMeter;
+        const sectorPts = [pos.x, pos.y];
+        for(let a=-half; a<=half; a+=0.1) { sectorPts.push(pos.x+Math.cos(a)*dPx); sectorPts.push(pos.y+Math.sin(a)*dPx); }
+        const sector = new Konva.Line({ points: sectorPts, fill: 'rgba(255,165,0,0.2)', stroke: 'orange', strokeWidth: 1, closed: true, listening: false });
+        layer.add(sector); layer.add(circle); layer.add(text);
+        cameras.push({ id, circle, text, sector });
         circle.on('dragmove', () => {
-          const x = circle.x(), y = circle.y();
-          text.position({ x: x - 8, y: y - 7 });
-          // Перестроить сектор
+          text.position({ x: circle.x()-6, y: circle.y()-7 });
           const newAngle = parseFloat(document.getElementById('fovAngle').value) || 80;
           const newDist = parseFloat(document.getElementById('fovDistance').value) || 10;
-          const half = (newAngle / 2) * Math.PI / 180;
-          const dpx = newDist * pixelsPerMeter;
-          const pts = [x, y];
-          for (let a = -half; a <= half; a += 0.1) {
-            pts.push(x + Math.cos(a) * dpx);
-            pts.push(y + Math.sin(a) * dpx);
-          }
+          const h = (newAngle/2)*Math.PI/180; const d = newDist * pixelsPerMeter;
+          const pts = [circle.x(), circle.y()];
+          for(let a=-h; a<=h; a+=0.1) { pts.push(circle.x()+Math.cos(a)*d); pts.push(circle.y()+Math.sin(a)*d); }
           sector.points(pts);
-          cables.forEach(c => {
-            if ((c.from.type === 'camera' && c.from.id === id) || (c.to.type === 'camera' && c.to.id === id)) {
-              updateCableEndpoints(c);
-            }
-          });
-          layer.batchDraw();
-          updateTotalLength();
+          cables.forEach(c => { if ((c.from.type==='camera' && c.from.id===id) || (c.to.type==='camera' && c.to.id===id)) updateCableEndpoints(c); });
+          layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
         setActiveTool('select');
       }
       else if (activeTool === 'switch') {
-        // ... (аналогично предыдущей версии, без изменений)
-                const id = generateId();
-        const rect = new Konva.Rect({
-          x: pos.x - 20, y: pos.y - 10, width: 40, height: 20,
-          fill: '#50c878', stroke: 'black', strokeWidth: 2,
-          draggable: true,
-        });
-        const text = new Konva.Text({
-          x: pos.x - 12, y: pos.y - 7,
-          text: 'SW' + (switches.length + 1),
-          fontSize: 11, fill: 'white', listening: false,
-        });
-        layer.add(rect);
-        layer.add(text);
+        const id = generateId();
+        const rect = new Konva.Rect({ x: pos.x-20, y: pos.y-10, width: 40, height: 20, fill: '#50c878', stroke: 'black', strokeWidth: 2, draggable: true });
+        const text = new Konva.Text({ x: pos.x-12, y: pos.y-7, text: 'SW'+(switches.length+1), fontSize: 11, fill: 'white', listening: false });
+        layer.add(rect); layer.add(text);
         switches.push({ id, rect, text });
         rect.on('dragmove', () => {
-          text.position({ x: rect.x() + 8, y: rect.y() + 3 });
-          cables.forEach(c => {
-            if ((c.from.type === 'switch' && c.from.id === id) || (c.to.type === 'switch' && c.to.id === id)) {
-              updateCableEndpoints(c);
-            }
-          });
-          layer.batchDraw();
-          updateTotalLength();
+          text.position({ x: rect.x()+8, y: rect.y()+3 });
+          cables.forEach(c => { if ((c.from.type==='switch'&&c.from.id===id)||(c.to.type==='switch'&&c.to.id===id)) updateCableEndpoints(c); });
+          layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
         setActiveTool('select');
       }
       else if (activeTool === 'nvr') {
-        // ... (аналогично)
-                const id = generateId();
-        const rect = new Konva.Rect({
-          x: pos.x - 25, y: pos.y - 15, width: 50, height: 30,
-          fill: '#ff8c00', stroke: 'black', strokeWidth: 2,
-          draggable: true,
-        });
-        const text = new Konva.Text({
-          x: pos.x - 15, y: pos.y - 8,
-          text: 'NVR', fontSize: 12, fill: 'white', listening: false,
-        });
-        layer.add(rect);
-        layer.add(text);
+        const id = generateId();
+        const rect = new Konva.Rect({ x: pos.x-25, y: pos.y-15, width: 50, height: 30, fill: '#ff8c00', stroke: 'black', strokeWidth: 2, draggable: true });
+        const text = new Konva.Text({ x: pos.x-15, y: pos.y-8, text: 'NVR', fontSize: 12, fill: 'white', listening: false });
+        layer.add(rect); layer.add(text);
         nvrs.push({ id, rect, text });
         rect.on('dragmove', () => {
-          text.position({ x: rect.x() + 8, y: rect.y() + 8 });
-          cables.forEach(c => {
-            if ((c.from.type === 'nvr' && c.from.id === id) || (c.to.type === 'nvr' && c.to.id === id)) {
-              updateCableEndpoints(c);
-            }
-          });
-          layer.batchDraw();
-          updateTotalLength();
+          text.position({ x: rect.x()+8, y: rect.y()+8 });
+          cables.forEach(c => { if ((c.from.type==='nvr'&&c.from.id===id)||(c.to.type==='nvr'&&c.to.id===id)) updateCableEndpoints(c); });
+          layer.batchDraw(); updateTotalLength();
         });
         layer.draw();
         setActiveTool('select');
       }
-      else if (activeTool === 'cable' && !cableStart) {
-        // Ничего не делаем, ожидаем клик по объекту
-      }
-      else if (activeTool === 'cable' && cableStart) {
-        // Кликнули по пустому месту — сброс
-        cableStart = null;
+      else if (activeTool === 'cable' && window._cableStart) {
+        // клик по пустому месту при начатом кабеле — сброс
+        window._cableStart = null;
         setActiveTool('select');
       }
-      else if (activeTool === 'delete') {
-        // Удаление через отдельный обработчик на объектах
-      }
+      // Для wall и delete ничего не делаем на пустом клике
     });
 
-    // Клик по объектам (камеры, свитчи, нвр) для кабеля
+    // Клики по объектам для кабеля и удаления
     stage.on('click', (e) => {
-      if (activeTool !== 'cable') return;
-      const target = e.target;
-      let foundObj = null;
-      for (let c of cameras) if (c.circle === target || c.sector === target) { foundObj = { type: 'camera', id: c.id }; break; }
-      for (let s of switches) if (s.rect === target) { foundObj = { type: 'switch', id: s.id }; break; }
-      for (let n of nvrs) if (n.rect === target) { foundObj = { type: 'nvr', id: n.id }; break; }
-
-      if (foundObj && !cableStart) {
-        const center = getObjectCenter(foundObj.type, foundObj.id);
-        cableStart = { ...foundObj, point: center };
-        // визуальная индикация начала кабеля не требуется
-      } else if (foundObj && cableStart) {
-        // Завершить кабель
-        const endCenter = getObjectCenter(foundObj.type, foundObj.id);
-        if (!endCenter) return;
-        if (cableStart.type === foundObj.type && cableStart.id === foundObj.id) return;
-        const line = new Konva.Line({
-          points: [cableStart.point.x, cableStart.point.y, endCenter.x, endCenter.y],
-          stroke: 'red', strokeWidth: 2,
-        });
-        layer.add(line);
-        cables.push({
-          id: generateId(),
-          line,
-          from: { type: cableStart.type, id: cableStart.id },
-          to: foundObj,
-        });
-        cableStart = null;
-        setActiveTool('select');
-        layer.draw();
-        updateTotalLength();
+      if (activeTool === 'cable') {
+        const target = e.target;
+        let found = null;
+        for (let c of cameras) if (c.circle === target) { found = { type: 'camera', id: c.id }; break; }
+        for (let s of switches) if (s.rect === target) { found = { type: 'switch', id: s.id }; break; }
+        for (let n of nvrs) if (n.rect === target) { found = { type: 'nvr', id: n.id }; break; }
+        if (!found) return;
+        if (!window._cableStart) {
+          window._cableStart = found;
+          // подсветим?
+        } else {
+          if (window._cableStart.type === found.type && window._cableStart.id === found.id) return;
+          const fromCenter = getObjectCenter(window._cableStart.type, window._cableStart.id);
+          const toCenter = getObjectCenter(found.type, found.id);
+          const line = new Konva.Line({ points: [fromCenter.x, fromCenter.y, toCenter.x, toCenter.y], stroke: 'red', strokeWidth: 2 });
+          layer.add(line);
+          cables.push({ id: generateId(), line, from: window._cableStart, to: found });
+          window._cableStart = null;
+          setActiveTool('select');
+          layer.draw();
+          updateTotalLength();
+        }
+      }
+      else if (activeTool === 'delete') {
+        const target = e.target;
+        // камеры
+        for (let i = cameras.length-1; i >= 0; i--) {
+          if (cameras[i].circle === target) {
+            cameras[i].circle.destroy(); cameras[i].text.destroy(); cameras[i].sector.destroy();
+            cables = cables.filter(c => !(c.from.type==='camera'&&c.from.id===cameras[i].id) && !(c.to.type==='camera'&&c.to.id===cameras[i].id));
+            cameras.splice(i,1);
+            layer.draw(); updateTotalLength(); return;
+          }
+        }
+        // свитчи
+        for (let i = switches.length-1; i >= 0; i--) {
+          if (switches[i].rect === target) {
+            switches[i].rect.destroy(); switches[i].text.destroy();
+            cables = cables.filter(c => !(c.from.type==='switch'&&c.from.id===switches[i].id) && !(c.to.type==='switch'&&c.to.id===switches[i].id));
+            switches.splice(i,1);
+            layer.draw(); updateTotalLength(); return;
+          }
+        }
+        // nvr
+        for (let i = nvrs.length-1; i >= 0; i--) {
+          if (nvrs[i].rect === target) {
+            nvrs[i].rect.destroy(); nvrs[i].text.destroy();
+            cables = cables.filter(c => !(c.from.type==='nvr'&&c.from.id===nvrs[i].id) && !(c.to.type==='nvr'&&c.to.id===nvrs[i].id));
+            nvrs.splice(i,1);
+            layer.draw(); updateTotalLength(); return;
+          }
+        }
+        // стены
+        for (let i = walls.length-1; i >= 0; i--) {
+          if (walls[i].line === target) {
+            walls[i].line.destroy(); walls[i].text.destroy();
+            walls.splice(i,1);
+            layer.draw(); return;
+          }
+        }
+        // кабели
+        for (let i = cables.length-1; i >= 0; i--) {
+          if (cables[i].line === target) {
+            cables[i].line.destroy();
+            cables.splice(i,1);
+            layer.draw(); updateTotalLength(); return;
+          }
+        }
       }
     });
 
     // Рисование стен
+    let isDrawingWall = false, wallStart = null, tempWallLine = null;
     stage.on('mousedown', (e) => {
       if (activeTool !== 'wall') return;
       if (e.target !== stage) return;
-      const pos = stage.getPointerPosition();
       isDrawingWall = true;
-      wallStartPoint = { x: pos.x, y: pos.y };
-      tempWallLine = new Konva.Line({
-        points: [pos.x, pos.y, pos.x, pos.y],
-        stroke: 'red', strokeWidth: 2, dash: [10, 5],
-      });
+      const pos = stage.getPointerPosition();
+      wallStart = pos;
+      tempWallLine = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y], stroke: 'red', strokeWidth: 2, dash: [10, 5] });
       layer.add(tempWallLine);
     });
     stage.on('mousemove', () => {
       if (!isDrawingWall || activeTool !== 'wall') return;
       const pos = stage.getPointerPosition();
-      tempWallLine.points([wallStartPoint.x, wallStartPoint.y, pos.x, pos.y]);
+      tempWallLine.points([wallStart.x, wallStart.y, pos.x, pos.y]);
       layer.batchDraw();
     });
     stage.on('mouseup', () => {
@@ -373,119 +277,50 @@
       isDrawingWall = false;
       const pos = stage.getPointerPosition();
       tempWallLine.destroy();
-      const dx = pos.x - wallStartPoint.x;
-      const dy = pos.y - wallStartPoint.y;
+      const dx = pos.x - wallStart.x, dy = pos.y - wallStart.y;
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-      const line = new Konva.Line({
-        points: [wallStartPoint.x, wallStartPoint.y, pos.x, pos.y],
-        stroke: 'black', strokeWidth: 4, draggable: true,
-      });
-      const lengthText = new Konva.Text({
-        text: '…', fontSize: 14, fill: 'red',
-        listening: false,
-      });
-      const wallObj = { id: generateId(), line, lengthText };
-      // Обновить длину и добавить обработчик перетаскивания
+      const line = new Konva.Line({ points: [wallStart.x, wallStart.y, pos.x, pos.y], stroke: 'black', strokeWidth: 4, draggable: true });
+      const text = new Konva.Text({ text: '', fontSize: 14, fill: 'red', listening: false });
+      const wallObj = { id: generateId(), line, text };
       updateWallLength(wallObj);
-      line.on('dragmove', () => {
-        updateWallLength(wallObj);
-        layer.batchDraw();
-      });
-      layer.add(line);
-      layer.add(lengthText);
+      line.on('dragmove', () => { updateWallLength(wallObj); layer.batchDraw(); });
+      layer.add(line); layer.add(text);
       walls.push(wallObj);
       layer.draw();
     });
 
-    // Удаление по клику на объект (когда выбран инструмент удаления)
-    stage.on('click', (e) => {
-      if (activeTool !== 'delete') return;
-      const target = e.target;
-      // Камеры
-      for (let i = cameras.length-1; i >=0; i--) {
-        if (cameras[i].circle === target || cameras[i].sector === target) {
-          cameras[i].circle.destroy(); cameras[i].text.destroy(); cameras[i].sector.destroy();
-          cables = cables.filter(c => !(c.from.type==='camera'&&c.from.id===cameras[i].id) && !(c.to.type==='camera'&&c.to.id===cameras[i].id));
-          cameras.splice(i,1);
-          layer.draw(); updateTotalLength(); return;
-        }
-      }
-      // Свитчи
-      for (let i = switches.length-1; i>=0; i--) {
-        if (switches[i].rect === target) {
-          switches[i].rect.destroy(); switches[i].text.destroy();
-          cables = cables.filter(c => !(c.from.type==='switch'&&c.from.id===switches[i].id) && !(c.to.type==='switch'&&c.to.id===switches[i].id));
-          switches.splice(i,1);
-          layer.draw(); updateTotalLength(); return;
-        }
-      }
-      // NVR
-      for (let i = nvrs.length-1; i>=0; i--) {
-        if (nvrs[i].rect === target) {
-          nvrs[i].rect.destroy(); nvrs[i].text.destroy();
-          cables = cables.filter(c => !(c.from.type==='nvr'&&c.from.id===nvrs[i].id) && !(c.to.type==='nvr'&&c.to.id===nvrs[i].id));
-          nvrs.splice(i,1);
-          layer.draw(); updateTotalLength(); return;
-        }
-      }
-      // Стены
-      for (let i = walls.length-1; i>=0; i--) {
-        if (walls[i].line === target) {
-          walls[i].line.destroy(); walls[i].lengthText.destroy();
-          walls.splice(i,1);
-          layer.draw(); return;
-        }
-      }
-      // Кабели
-      for (let i = cables.length-1; i>=0; i--) {
-        if (cables[i].line === target) {
-          cables[i].line.destroy();
-          cables.splice(i,1);
-          layer.draw(); updateTotalLength(); return;
-        }
-      }
-    });
-
     // Калибровка масштаба
+    let calibrating = false, calibStart, calibLine;
+    window._calibLine = null;
     document.getElementById('calibrateBtn').addEventListener('click', () => {
-      if (calibrating) {
-        // Завершаем калибровку
+      if (!calibrating) {
+        calibrating = true;
+        setActiveTool('calibrate');
+      } else {
         if (calibLine) {
           const pts = calibLine.points();
-          const dx = pts[2] - pts[0];
-          const dy = pts[3] - pts[1];
-          const lengthPx = Math.sqrt(dx*dx + dy*dy);
-          const realMeters = parseFloat(prompt('Введите реальную длину этой линии в метрах:', '1'));
-          if (realMeters && realMeters > 0) {
-            pixelsPerMeter = lengthPx / realMeters;
-            // Обновить все стены и кабели
-            updateAllWallLengths();
+          const lenPx = Math.sqrt((pts[2]-pts[0])**2 + (pts[3]-pts[1])**2);
+          const realM = parseFloat(prompt('Введите реальную длину этой линии в метрах:', '1'));
+          if (realM && realM > 0) {
+            pixelsPerMeter = lenPx / realM;
+            walls.forEach(w => updateWallLength(w));
             updateTotalLength();
+            layer.draw();
           }
           calibLine.destroy();
           calibLine = null;
         }
         calibrating = false;
-        document.getElementById('calibrateBtn').classList.remove('active');
         setActiveTool('select');
-      } else {
-        calibrating = true;
-        document.getElementById('calibrateBtn').classList.add('active');
-        setActiveTool('calibrate');
-        // Ждём рисование линии
       }
     });
 
-    // Рисование линии калибровки
     stage.on('mousedown', (e) => {
       if (activeTool !== 'calibrate' || !calibrating) return;
       if (e.target !== stage) return;
       const pos = stage.getPointerPosition();
-      calibStart = { x: pos.x, y: pos.y };
-      calibLine = new Konva.Line({
-        points: [pos.x, pos.y, pos.x, pos.y],
-        stroke: 'blue', strokeWidth: 2, dash: [5, 5],
-      });
+      calibStart = pos;
+      calibLine = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y], stroke: 'blue', strokeWidth: 2, dash: [5, 5] });
       layer.add(calibLine);
     });
     stage.on('mousemove', () => {
@@ -495,14 +330,8 @@
       layer.batchDraw();
     });
     stage.on('mouseup', () => {
-      if (activeTool !== 'calibrate' || !calibStart) return;
-      // Оставляем линию, ждём нажатия кнопки Калибровать повторно
+      // ничего не делаем, ждём повторного нажатия на кнопку калибровки
     });
-
-    function updateAllWallLengths() {
-      walls.forEach(w => updateWallLength(w));
-      layer.draw();
-    }
 
     setActiveTool('select');
     layer.draw();
