@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Видео Помощник | Проектирование CCTV</title>
     <style>
         :root { --bg:#1a1d23; --panel:#252830; --text:#e0e0e0; --accent:#4a90e2; --danger:#e74c3c; --success:#2ecc71; --warn:#f39c12; }
@@ -57,7 +58,7 @@
 </div>
 <div id="contextMenu"></div>
 <script>
-    (function() {
+       (function() {
         // ---------- ИНИЦИАЛИЗАЦИЯ ----------
         const container = document.getElementById('canvas-container');
         const stage = new Konva.Stage({ container: 'canvas-container', width: container.clientWidth, height: container.clientHeight });
@@ -224,8 +225,7 @@
             selectedObject = null;
             updateSidebar();
         }
-
-        // ---------- ОСНОВНЫЕ ОБРАБОТЧИКИ ----------
+                // ---------- ОСНОВНЫЕ ОБРАБОТЧИКИ ----------
         stage.on('click', (e) => {
             if (e.evt.button === 2) return;
             const pos = stage.getPointerPosition();
@@ -423,8 +423,7 @@
             }
             layer.batchDraw();
         });
-
-        // Рисование стен
+                // Рисование стен
         stage.on('mousedown', (e) => {
             if (activeTool !== 'wall' || e.target !== stage) return;
             isDrawingWall = true;
@@ -511,15 +510,12 @@
         // Сохранение/Загрузка проекта
         document.getElementById('saveBtn').addEventListener('click', () => {
             const state = {
-                pixelsPerMeter, walls, cameras, switches, nvrs, cables,
-                // убираем объекты Konva, сохраняем только данные
+                pixelsPerMeter,
                 walls: walls.map(w => ({ x1: w.line.points()[0], y1: w.line.points()[1], x2: w.line.points()[2], y2: w.line.points()[3] })),
                 cameras: cameras.map(c => ({ x: c.circle.x(), y: c.circle.y(), angle: c.angle, direction: c.direction, name: c.name, price: c.price })),
                 switches: switches.map(s => ({ x: s.rect.x(), y: s.rect.y() })),
                 nvrs: nvrs.map(n => ({ x: n.rect.x(), y: n.rect.y() })),
-                cables: cables.map(c => ({
-                    from: c.from, to: c.to, path: c.path, lift: c.lift
-                }))
+                cables: cables.map(c => ({ from: c.from, to: c.to, path: c.path, lift: c.lift }))
             };
             localStorage.setItem('cctv-project', JSON.stringify(state));
             alert('Проект сохранён!');
@@ -528,12 +524,9 @@
             const json = localStorage.getItem('cctv-project');
             if (!json) { alert('Нет сохранённого проекта.'); return; }
             const state = JSON.parse(json);
-            // очистка текущих объектов
             layer.destroyChildren();
             walls = []; cameras = []; switches = []; nvrs = []; cables = [];
-            // восстановление масштаба
             pixelsPerMeter = state.pixelsPerMeter || 20;
-            // стены
             state.walls.forEach(w => {
                 const line = new Konva.Line({ points:[w.x1,w.y1,w.x2,w.y2], stroke:'#aaa', strokeWidth:4 });
                 const text = new Konva.Text({ fontSize:14, fill:'#f39c12' });
@@ -554,7 +547,6 @@
                 layer.add(line); layer.add(text); layer.add(h1); layer.add(h2);
                 walls.push(wallObj); updateWall();
             });
-            // камеры
             state.cameras.forEach(c => {
                 const circle = new Konva.Circle({ x:c.x, y:c.y, radius:14, fill:'#4a90e2', stroke:'#fff', strokeWidth:2, draggable:true });
                 const text = new Konva.Text({ x:c.x-6, y:c.y-7, text:c.name||'K'+(cameras.length+1), fontSize:12, fill:'white', listening:false });
@@ -573,12 +565,42 @@
                 });
                 circle.on('click', () => { selectedObject = {type:'camera', idx:cameras.indexOf(cam)}; updateSidebar(); });
             });
-            // свитчи, NVR, кабели аналогично
-            // ...
+            state.switches.forEach(s => {
+                const rect = new Konva.Rect({ x:s.x-20, y:s.y-10, width:40, height:20, fill:'#2ecc71', stroke:'#fff', strokeWidth:2, draggable:true });
+                const text = new Konva.Text({ x:s.x-12, y:s.y-7, text:'SW'+(switches.length+1), fontSize:11, fill:'white', listening:false });
+                layer.add(rect); layer.add(text);
+                switches.push({ id:genId(), rect, text });
+                rect.on('dragmove', () => { text.position({ x:rect.x()+8, y:rect.y()+3 }); updateAllCables(); layer.batchDraw(); updateSidebar(); });
+            });
+            state.nvrs.forEach(n => {
+                const rect = new Konva.Rect({ x:n.x-25, y:n.y-15, width:50, height:30, fill:'#f39c12', stroke:'#fff', strokeWidth:2, draggable:true });
+                const text = new Konva.Text({ x:n.x-15, y:n.y-8, text:'NVR', fontSize:12, fill:'white', listening:false });
+                layer.add(rect); layer.add(text);
+                nvrs.push({ id:genId(), rect, text });
+                rect.on('dragmove', () => { text.position({ x:rect.x()+8, y:rect.y()+8 }); updateAllCables(); layer.batchDraw(); updateSidebar(); });
+            });
+            state.cables.forEach(c => {
+                const line = new Konva.Line({ stroke:'#e74c3c', strokeWidth:2 });
+                const cableObj = { id:genId(), line, from:c.from, to:c.to, path:c.path||[], lift:c.lift||0 };
+                updateCable(cableObj);
+                layer.add(line);
+                cables.push(cableObj);
+                line.on('dblclick', (ev) => {
+                    const mp = stage.getPointerPosition();
+                    const height = prompt('Добавить точку:\nВведите высоту подъёма (м) для этой точки (0 - без подъёма):', '0');
+                    if (height !== null) {
+                        const h = parseFloat(height) || 0;
+                        cableObj.path.push({x:mp.x, y:mp.y, height:h});
+                        if (h > 0) cableObj.lift = (cableObj.lift||0) + h;
+                        updateCable(cableObj);
+                        layer.draw(); updateSidebar();
+                    }
+                });
+            });
             updateAllCables(); layer.draw(); updateSidebar();
         });
 
-        // Экспорт КП (упрощённый)
+        // Экспорт КП
         document.getElementById('exportBtn').addEventListener('click', () => {
             let totalPrice = cameras.reduce((sum, c) => sum + (c.price||0), 0);
             let html = `<html><head><meta charset="utf-8"><title>КП</title></head><body>
@@ -623,4 +645,4 @@
     })();
 </script>
 </body>
-</html>
+</html>   
