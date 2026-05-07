@@ -469,34 +469,7 @@
             walls.push(wallObj); updateWall(); layer.draw();
         });
 
-        // Калибровка
-        document.getElementById('calibrateBtn').addEventListener('click', () => {
-            if (calibLine) {
-                const pts = calibLine.points();
-                const lenPx = Math.hypot(pts[2]-pts[0], pts[3]-pts[1]);
-                const realM = parseFloat(prompt('Введите реальную длину линии в метрах:', '1'));
-                if (realM && realM > 0) {
-                    pixelsPerMeter = lenPx / realM;
-                    updateAllCables(); updateSidebar(); layer.draw();
-                }
-                calibLine.destroy(); calibLine=null; calibStart=null;
-                setActiveTool('select');
-            }
-        });
-        stage.on('mousedown', (e) => {
-            if (activeTool !== 'calibrate' || e.target !== stage) return;
-            calibStart = stage.getPointerPosition();
-            calibLine = new Konva.Line({ points:[calibStart.x,calibStart.y,calibStart.x,calibStart.y], stroke:'#f1c40f', strokeWidth:2, dash:[5,5] });
-            layer.add(calibLine);
-        });
-        stage.on('mousemove', () => {
-            if (!calibLine || activeTool !== 'calibrate') return;
-            const pos = stage.getPointerPosition();
-            calibLine.points([calibStart.x, calibStart.y, pos.x, pos.y]);
-            layer.batchDraw();
-        });
-        stage.on('mouseup', () => {});
-
+       
         // Фон
         layer.on('draw', () => {
             if (!backgroundImage) return;
@@ -637,6 +610,33 @@
             };
             reader.readAsText(file);
         });
+ // Калибровка
+        document.getElementById('calibrateBtn').addEventListener('click', () => {
+            if (calibLine) {
+                const pts = calibLine.points();
+                const lenPx = Math.hypot(pts[2]-pts[0], pts[3]-pts[1]);
+                const realM = parseFloat(prompt('Введите реальную длину линии в метрах:', '1'));
+                if (realM && realM > 0) {
+                    pixelsPerMeter = lenPx / realM;
+                    updateAllCables(); updateSidebar(); layer.draw();
+                }
+                calibLine.destroy(); calibLine=null; calibStart=null;
+                setActiveTool('select');
+            }
+        });
+        stage.on('mousedown', (e) => {
+            if (activeTool !== 'calibrate' || e.target !== stage) return;
+            calibStart = stage.getPointerPosition();
+            calibLine = new Konva.Line({ points:[calibStart.x,calibStart.y,calibStart.x,calibStart.y], stroke:'#f1c40f', strokeWidth:2, dash:[5,5] });
+            layer.add(calibLine);
+        });
+        stage.on('mousemove', () => {
+            if (!calibLine || activeTool !== 'calibrate') return;
+            const pos = stage.getPointerPosition();
+            calibLine.points([calibStart.x, calibStart.y, pos.x, pos.y]);
+            layer.batchDraw();
+        });
+        stage.on('mouseup', () => {});
 
         // Инициализация
         buildToolbar();
