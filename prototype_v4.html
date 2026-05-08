@@ -4,6 +4,24 @@
   <meta charset="UTF-8">
   <title>Видео Помощник – Прототип v4 (Полный)</title>
   <style>
+    :root {
+  --bg: #0f172a;
+  --sidebar-bg: #1e293b;
+  --text: #e2e8f0;
+  --panel-bg: #0f172a;
+  --border: #334155;
+}
+.light {
+  --bg: #f8fafc;
+  --sidebar-bg: #e2e8f0;
+  --text: #0f172a;
+  --panel-bg: #ffffff;
+  --border: #cbd5e1;
+}
+body { background: var(--bg); color: var(--text); }
+.sidebar { background: var(--sidebar-bg); }
+.property-panel, .smeta-box { background: var(--panel-bg); border-color: var(--border); }
+canvas { background: var(--bg); }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; height: 100vh; overflow: hidden; }
     .sidebar { width: 300px; background: #1e293b; padding: 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; font-size: 12px; }
@@ -30,6 +48,7 @@
 <div class="sidebar">
   <h3>🔧 Инструменты</h3>
   <div class="toolbar">
+    <button id="themeToggle" style="margin-bottom:6px;">🌓 Тема</button>
     <button id="toolSelect" class="active">🖱️ Выбрать</button>
     <button id="toolWall">🧱 Стена</button>
     <button id="toolCamera">📷 Камера</button>
@@ -78,13 +97,12 @@
     <button onclick="document.getElementById('aiModal').style.display='none'">Закрыть</button>
   </div>
 </div>
-
 <script>
 (function() {
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
 
-  // ---------- СОСТОЯНИЕ (объявлено до первого использования) ----------
+  // ---------- СОСТОЯНИЕ ----------
   let zoom = 1, panX = 0, panY = 0;
   let isPanning = false, panStart = {x:0,y:0};
   let currentTool = 'select';
@@ -92,14 +110,14 @@
   let cameras = [];
   let texts = [];
   let cables = [];
-  let links = [];        // [{from: {x,y}, to: {x,y}}]
-  let devices = [];      // [{type:'recorder'|'switch'|'monitor'|'pc', x, y, article?}]
+  let links = [];
+  let devices = [];
   let equipment = [];
-  let selectedObject = null; // {type:'wall'|'camera'|'text'|'cable'|'link'|'device', index}
+  let selectedObject = null;
   let wallDrawing = null;
   let cableDrawing = [];
-  let linkDrawing = null; // {from: {x,y}, to: {x,y}} временная связь
-  let draggingWallEndpoint = null; // {wallIndex, point: 'start'|'end'}
+  let linkDrawing = null;
+  let draggingWallEndpoint = null;
 
   // UI элементы
   const toolButtons = {
@@ -129,7 +147,6 @@
     canvas.width = window.innerWidth - 300;
     canvas.height = window.innerHeight;
     drawAll();
-    autoSelectEquipment();
   }
   resize();
   window.addEventListener('resize', resize);
@@ -144,9 +161,10 @@
     linkDrawing = null;
     selectedObject = null;
     draggingWallEndpoint = null;
+    canvas._cableStart = null;   // сброс построителя кабеля
+    canvas._dragOffset = null;
     updatePropertyPanel();
     drawAll();
-    autoSelectEquipment();
   }
   toolButtons.select.addEventListener('click', () => setTool('select'));
   toolButtons.wall.addEventListener('click', () => setTool('wall'));
@@ -159,7 +177,7 @@
   toolButtons.monitor.addEventListener('click', () => setTool('monitor'));
   toolButtons.pc.addEventListener('click', () => setTool('pc'));
 
-  // CSV-загрузка (аналогично, но с поддержкой русских категорий)
+  // CSV-загрузка
   document.getElementById('csvUpload').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -212,125 +230,92 @@
   });
 
   function updateEquipmentSelects() {
-  // Камеры
-  equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
-  equipment.forEach((eq, idx) => {
-    if (eq.category === 'camera' || eq.category === 'камера') {
-      const opt = document.createElement('option');
-      opt.value = idx;
-      opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
-      equipmentSelect.appendChild(opt);
-    }
-  });
-  
-  // Регистраторы
-  recorderSelect.innerHTML = '<option value="">Авто (нет)</option>';
-  equipment.forEach((eq, idx) => {
-    if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
-      const opt = document.createElement('option');
-      opt.value = idx;
-      opt.textContent = `${eq.article} - ${eq.name} (каналов: ${eq.specs.channels || '?'})`;
-      recorderSelect.appendChild(opt);
-    }
-  });
-  
-  // Свитчи
-  switchSelect.innerHTML = '<option value="">Авто (нет)</option>';
-  equipment.forEach((eq, idx) => {
-    if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
-      const opt = document.createElement('option');
-      opt.value = idx;
-      opt.textContent = `${eq.article} - ${eq.name} (PoE бюджет: ${eq.specs.poe_budget_w || '?'} Вт)`;
-      switchSelect.appendChild(opt);
-    }
-  });
+    equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'camera' || eq.category === 'камера') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
+        equipmentSelect.appendChild(opt);
+      }
+    });
+    recorderSelect.innerHTML = '<option value="">Авто (нет)</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${eq.article} - ${eq.name} (каналов: ${eq.specs.channels || '?'})`;
+        recorderSelect.appendChild(opt);
+      }
+    });
+    switchSelect.innerHTML = '<option value="">Авто (нет)</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${eq.article} - ${eq.name} (PoE бюджет: ${eq.specs.poe_budget_w || '?'} Вт)`;
+        switchSelect.appendChild(opt);
+      }
+    });
+    autoSelectEquipment();
+  }
 
-  // Автоматический подбор
-  autoSelectEquipment();
-}
   function autoSelectEquipment() {
-  if (cameras.length === 0) {
-    recorderSelect.value = '';
-    switchSelect.value = '';
-    return;
-  }
-
-  // Собираем потребности: количество каналов, общая мощность, разрешения
-  const totalCameras = cameras.length;
-  let totalPower = 0;
-  const resolutions = new Set();
-  
-  cameras.forEach(cam => {
-    const eq = equipment.find(e => e.article === cam.article);
-    if (eq) {
-      if (eq.specs.power_consumption_w) totalPower += eq.specs.power_consumption_w;
-      if (eq.specs.resolution) resolutions.add(eq.specs.resolution);
+    if (cameras.length === 0) {
+      recorderSelect.value = '';
+      switchSelect.value = '';
+      return;
     }
-  });
+    const totalCameras = cameras.length;
+    let totalPower = 0;
+    cameras.forEach(cam => {
+      const eq = equipment.find(e => e.article === cam.article);
+      if (eq && eq.specs.power_consumption_w) totalPower += eq.specs.power_consumption_w;
+    });
 
-  // --- Подбор регистратора ---
-  // Ищем все регистраторы в прайсе, сортируем по каналам (предполагаем поле channels в specs)
-  const recorders = equipment.filter(e => e.category === 'recorder' || e.category === 'registrator' || e.category === 'регистратор');
-  let bestRecorder = null;
-  let bestRecorderIdx = -1;
-  
-  recorders.forEach((rec, idx) => {
-    const channels = parseInt(rec.specs.channels) || 0;
-    if (channels >= totalCameras) {
-      // Дополнительно можно проверить поддержку разрешений (если есть в specs)
-      if (!bestRecorder || channels < parseInt(bestRecorder.specs.channels)) {
-        // Выбираем минимально достаточный, чтобы не переплачивать
-        bestRecorder = rec;
-        bestRecorderIdx = equipment.indexOf(rec);
+    // Подбор регистратора
+    const recorders = equipment.filter(e => e.category === 'recorder' || e.category === 'registrator' || e.category === 'регистратор');
+    let bestRecorder = null, bestRecorderIdx = -1;
+    recorders.forEach((rec, idx) => {
+      const channels = parseInt(rec.specs.channels) || 0;
+      if (channels >= totalCameras) {
+        if (!bestRecorder || channels < parseInt(bestRecorder.specs.channels)) {
+          bestRecorder = rec;
+          bestRecorderIdx = equipment.indexOf(rec);
+        }
+      }
+    });
+    recorderSelect.value = bestRecorderIdx >= 0 ? bestRecorderIdx : '';
+
+    // Подбор PoE-свитча
+    const switches = equipment.filter(e => e.category === 'switch' || e.category === 'poe' || e.category === 'коммутатор');
+    let bestSwitch = null, bestSwitchIdx = -1;
+    switches.forEach((sw, idx) => {
+      const poeBudget = parseFloat(sw.specs.poe_budget_w) || 0;
+      const ports = parseInt(sw.specs.ports) || 0;
+      if (ports >= totalCameras && poeBudget >= totalPower) {
+        if (!bestSwitch || ports < parseInt(bestSwitch.specs.ports)) {
+          bestSwitch = sw;
+          bestSwitchIdx = equipment.indexOf(sw);
+        }
+      }
+    });
+    switchSelect.value = bestSwitchIdx >= 0 ? bestSwitchIdx : '';
+
+    if (switchSelect.value !== '') {
+      const selSw = equipment[parseInt(switchSelect.value)];
+      const budget = parseFloat(selSw.specs.poe_budget_w) || 0;
+      if (budget < totalPower) {
+        alert(`Внимание! Суммарная мощность камер (${totalPower} Вт) превышает PoE-бюджет выбранного коммутатора ${selSw.name} (${budget} Вт).`);
       }
     }
-  });
-  
-  if (bestRecorderIdx >= 0) {
-    recorderSelect.value = bestRecorderIdx;
-  } else {
-    recorderSelect.value = '';
   }
-
-  // --- Подбор PoE-свитча ---
-  const switches = equipment.filter(e => e.category === 'switch' || e.category === 'poe' || e.category === 'коммутатор');
-  let bestSwitch = null;
-  let bestSwitchIdx = -1;
-  
-  switches.forEach((sw, idx) => {
-    const poeBudget = parseFloat(sw.specs.poe_budget_w) || 0;
-    const ports = parseInt(sw.specs.ports) || 0;
-    if (ports >= totalCameras && poeBudget >= totalPower) {
-      if (!bestSwitch || ports < parseInt(bestSwitch.specs.ports)) {
-        bestSwitch = sw;
-        bestSwitchIdx = equipment.indexOf(sw);
-      }
-    }
-  });
-  
-  if (bestSwitchIdx >= 0) {
-    switchSelect.value = bestSwitchIdx;
-  } else {
-    switchSelect.value = '';
-    // Можно вывести предупреждение, если нет подходящего
-  }
-  
-  // Проверка PoE-бюджета текущего выбранного свитча (если выбран вручную)
-  if (switchSelect.value !== '') {
-    const selSw = equipment[parseInt(switchSelect.value)];
-    const budget = parseFloat(selSw.specs.poe_budget_w) || 0;
-    if (budget < totalPower) {
-      alert(`Внимание! Суммарная мощность камер (${totalPower} Вт) превышает PoE-бюджет выбранного коммутатора ${selSw.name} (${budget} Вт). Выберите другой коммутатор или добавьте блоки питания.`);
-    }
-  }
-}
 
   function getSelectedCameraEquipment() {
     const idx = equipmentSelect.value;
     return idx !== '' ? equipment[parseInt(idx)] : null;
   }
 
-  // Масштаб (пикселей в метре)
   function getScale() {
     return parseFloat(scaleInput.value) || 50;
   }
@@ -383,17 +368,10 @@
   }
 
   function drawGrid() {
-    const g = 20;
-    const sX = -panX/zoom, sY = -panY/zoom;
-    const eX = sX + canvas.width/zoom, eY = sY + canvas.height/zoom;
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 0.5/zoom;
-    for (let x = Math.floor(sX/g)*g; x <= eX; x += g) {
-      ctx.beginPath(); ctx.moveTo(x, sY); ctx.lineTo(x, eY); ctx.stroke();
-    }
-    for (let y = Math.floor(sY/g)*g; y <= eY; y += g) {
-      ctx.beginPath(); ctx.moveTo(sX, y); ctx.lineTo(eX, y); ctx.stroke();
-    }
+    const g = 20, sX = -panX/zoom, sY = -panY/zoom, eX = sX + canvas.width/zoom, eY = sY + canvas.height/zoom;
+    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 0.5/zoom;
+    for (let x = Math.floor(sX/g)*g; x <= eX; x += g) { ctx.beginPath(); ctx.moveTo(x,sY); ctx.lineTo(x,eY); ctx.stroke(); }
+    for (let y = Math.floor(sY/g)*g; y <= eY; y += g) { ctx.beginPath(); ctx.moveTo(sX,y); ctx.lineTo(eX,y); ctx.stroke(); }
   }
 
   function drawWalls() {
@@ -401,40 +379,29 @@
       const isSel = selectedObject?.type === 'wall' && selectedObject.index === i;
       ctx.strokeStyle = isSel ? '#38bdf8' : '#94a3b8';
       ctx.lineWidth = 3/zoom;
-      ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
-      const lenPx = Math.hypot(w.x2-w.x1, w.y2-w.y1);
-      const lenM = (lenPx / getScale()).toFixed(1);
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = `${11/zoom}px sans-serif`;
+      ctx.beginPath(); ctx.moveTo(w.x1,w.y1); ctx.lineTo(w.x2,w.y2); ctx.stroke();
+      const lenM = (Math.hypot(w.x2-w.x1, w.y2-w.y1) / getScale()).toFixed(1);
+      ctx.fillStyle = '#fbbf24'; ctx.font = `${11/zoom}px sans-serif`;
       ctx.fillText(`${lenM} м`, (w.x1+w.x2)/2+4/zoom, (w.y1+w.y2)/2-4/zoom);
       if (isSel) {
-        // маркеры на концах
-        ctx.fillStyle = '#fbbf24';
-        ctx.beginPath(); ctx.arc(w.x1, w.y1, 5/zoom, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(w.x2, w.y2, 5/zoom, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(w.x1,w.y1,5/zoom,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(w.x2,w.y2,5/zoom,0,Math.PI*2); ctx.fill();
       }
     });
   }
 
   function drawCables() {
-    cables.forEach((cable, idx) => {
+    cables.forEach(cable => {
       const pts = cable.points;
-      ctx.strokeStyle = '#f472b6';
-      ctx.lineWidth = 2/zoom;
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let j=1; j<pts.length; j++) {
-        ctx.lineTo(pts[j][0], pts[j][1]);
-      }
+      ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2/zoom;
+      ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+      for (let j=1; j<pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]);
       ctx.stroke();
       let totalPx = 0;
-      for (let j=1; j<pts.length; j++) {
-        totalPx += Math.hypot(pts[j][0]-pts[j-1][0], pts[j][1]-pts[j-1][1]);
-      }
+      for (let j=1; j<pts.length; j++) totalPx += Math.hypot(pts[j][0]-pts[j-1][0], pts[j][1]-pts[j-1][1]);
       const totalM = (totalPx / getScale()).toFixed(1);
       const midX = pts.reduce((s,p)=>s+p[0],0)/pts.length, midY = pts.reduce((s,p)=>s+p[1],0)/pts.length;
-      ctx.fillStyle = '#f472b6';
-      ctx.font = `${10/zoom}px sans-serif`;
+      ctx.fillStyle = '#f472b6'; ctx.font = `${10/zoom}px sans-serif`;
       ctx.fillText(`${totalM} м`, midX+5/zoom, midY-5/zoom);
     });
   }
@@ -444,14 +411,9 @@
       const isSel = selectedObject?.type === 'link' && selectedObject.index === i;
       ctx.strokeStyle = isSel ? '#c084fc' : '#a78bfa';
       ctx.lineWidth = 2/zoom;
-      ctx.beginPath();
-      ctx.moveTo(link.from.x, link.from.y);
-      ctx.lineTo(link.to.x, link.to.y);
-      ctx.stroke();
-      const lenPx = Math.hypot(link.to.x - link.from.x, link.to.y - link.from.y);
-      const lenM = (lenPx / getScale()).toFixed(1);
-      ctx.fillStyle = '#a78bfa';
-      ctx.font = `${10/zoom}px sans-serif`;
+      ctx.beginPath(); ctx.moveTo(link.from.x, link.from.y); ctx.lineTo(link.to.x, link.to.y); ctx.stroke();
+      const lenM = (Math.hypot(link.to.x-link.from.x, link.to.y-link.from.y) / getScale()).toFixed(1);
+      ctx.fillStyle = '#a78bfa'; ctx.font = `${10/zoom}px sans-serif`;
       ctx.fillText(`${lenM} м`, (link.from.x+link.to.x)/2+5/zoom, (link.from.y+link.to.y)/2-5/zoom);
     });
   }
@@ -461,11 +423,10 @@
     devices.forEach((dev, i) => {
       const isSel = selectedObject?.type === 'device' && selectedObject.index === i;
       ctx.font = `${20/zoom}px sans-serif`;
-      ctx.fillText(icons[dev.type] || '❓', dev.x - 10/zoom, dev.y + 5/zoom);
+      ctx.fillText(icons[dev.type] || '❓', dev.x-10/zoom, dev.y+5/zoom);
       if (isSel) {
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 2/zoom;
-        ctx.strokeRect(dev.x - 15/zoom, dev.y - 15/zoom, 30/zoom, 30/zoom);
+        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2/zoom;
+        ctx.strokeRect(dev.x-15/zoom, dev.y-15/zoom, 30/zoom, 30/zoom);
       }
     });
   }
@@ -475,8 +436,7 @@
       const eq = equipment.find(e => e.article === cam.article);
       const angleH = eq?.specs.angle_h || 70;
       const radius = 150;
-      const rad = (cam.angle - 90) * Math.PI/180;
-      const half = angleH/2 * Math.PI/180;
+      const rad = (cam.angle - 90) * Math.PI/180, half = angleH/2 * Math.PI/180;
       ctx.save();
       ctx.translate(cam.x, cam.y);
       ctx.fillStyle = 'rgba(56,189,248,0.15)';
@@ -506,44 +466,34 @@
     });
   }
 
-  // Утилиты координат
   function toLogical(cx, cy) {
     const r = canvas.getBoundingClientRect();
-    return {
-      x: (cx - r.left - panX) / zoom,
-      y: (cy - r.top - panY) / zoom
-    };
+    return { x: (cx - r.left - panX) / zoom, y: (cy - r.top - panY) / zoom };
   }
 
   function findObjectAt(lx, ly) {
-    // камеры
     for (let i = cameras.length-1; i >= 0; i--) {
       if (Math.hypot(lx-cameras[i].x, ly-cameras[i].y) < 12/zoom) return {type:'camera', index:i};
     }
-    // стены (по расстоянию до линии)
     for (let i = 0; i < walls.length; i++) {
       const w = walls[i];
       if (distToSegment(lx, ly, w.x1, w.y1, w.x2, w.y2) < 8/zoom) return {type:'wall', index:i};
     }
-    // текст
     for (let i = 0; i < texts.length; i++) {
       const t = texts[i];
       const m = ctx.measureText(t.text);
       if (lx >= t.x && lx <= t.x+m.width && ly >= t.y-12 && ly <= t.y+4) return {type:'text', index:i};
     }
-    // кабели (по ближайшей точке)
     for (let i = 0; i < cables.length; i++) {
       const pts = cables[i].points;
       for (let j=1; j<pts.length; j++) {
         if (distToSegment(lx, ly, pts[j-1][0], pts[j-1][1], pts[j][0], pts[j][1]) < 6/zoom) return {type:'cable', index:i};
       }
     }
-    // связи
     for (let i = 0; i < links.length; i++) {
       const l = links[i];
       if (distToSegment(lx, ly, l.from.x, l.from.y, l.to.x, l.to.y) < 6/zoom) return {type:'link', index:i};
     }
-    // устройства
     for (let i = 0; i < devices.length; i++) {
       const d = devices[i];
       if (Math.abs(lx-d.x)<10/zoom && Math.abs(ly-d.y)<10/zoom) return {type:'device', index:i};
@@ -568,15 +518,31 @@
     }
     const obj = selectedObject;
     let html = '';
-    // кнопка удаления
     const delBtn = '<button onclick="document.dispatchEvent(new CustomEvent(\'deleteObject\'))" style="background:#b91c1c; margin-top:4px;">🗑️ Удалить</button>';
 
     if (obj.type === 'camera') {
       const cam = cameras[obj.index];
       const eq = equipment.find(e => e.article === cam.article);
       html = `<b>Камера</b><br>Артикул: ${cam.article}<br>${eq ? `Название: ${eq.name}<br>Угол обзора: ${eq.specs.angle_h||90}°<br>Разр: ${eq.specs.resolution||'-'}<br>Цена: ${eq.specs.price_rub?eq.specs.price_rub+' ₽':'-'}` : ''}
-        <br>Угол установки: <input type="range" min="0" max="360" value="${cam.angle}" id="cameraAngleSlider" style="width:80%;"> <span id="angleValue">${cam.angle}°</span>
-        <br>${delBtn}`;
+        <br>Угол установки: <input type="range" min="0" max="360" value="${cam.angle}" id="cameraAngleSlider" style="width:80%;"> <span id="angleValue">${cam.angle}°</span>`;
+      // Привязка к регистратору/свитчу
+      let linkOptions = '<br>Подключена к: ';
+      const recDevices = devices.filter(d => d.type === 'recorder' || d.type === 'switch');
+      if (recDevices.length > 0) {
+        linkOptions += `<select id="camLinkSelect"><option value="">-- Не выбрано --</option>`;
+        recDevices.forEach((dev, i) => {
+          const eqDev = equipment.find(e => e.article === dev.article);
+          const label = eqDev ? eqDev.name : dev.type;
+          linkOptions += `<option value="${i}" ${cam.linkDeviceIndex === i ? 'selected' : ''}>${label}</option>`;
+        });
+        linkOptions += '</select>';
+      } else {
+        linkOptions += 'нет размещённых регистраторов/свитчей';
+      }
+      html += linkOptions + `<br>${delBtn}`;
+      propContent.innerHTML = html;
+
+      // Обработчики событий
       setTimeout(() => {
         const slider = document.getElementById('cameraAngleSlider');
         const val = document.getElementById('angleValue');
@@ -586,17 +552,23 @@
             cameras[obj.index].angle = newAngle;
             val.textContent = newAngle + '°';
             drawAll();
-            autoSelectEquipment();
+          });
+        }
+        const sel = document.getElementById('camLinkSelect');
+        if (sel) {
+          sel.addEventListener('change', function() {
+            cameras[obj.index].linkDeviceIndex = parseInt(this.value) || -1;
           });
         }
       }, 0);
     } else if (obj.type === 'wall') {
       const w = walls[obj.index];
-      const lenPx = Math.hypot(w.x2-w.x1, w.y2-w.y1);
-      const lenM = (lenPx / getScale()).toFixed(1);
+      const lenM = (Math.hypot(w.x2-w.x1, w.y2-w.y1) / getScale()).toFixed(1);
       html = `<b>Стена</b><br>Длина: ${lenM} м<br>${delBtn}`;
+      propContent.innerHTML = html;
     } else if (obj.type === 'text') {
       html = `<b>Текст</b><br>${texts[obj.index].text}<br><button id="editTextBtn">✏️ Редактировать</button> ${delBtn}`;
+      propContent.innerHTML = html;
       setTimeout(() => {
         const btn = document.getElementById('editTextBtn');
         if (btn) btn.onclick = () => {
@@ -604,18 +576,16 @@
           if (nt !== null) { texts[obj.index].text = nt; drawAll(); updatePropertyPanel(); }
         };
       }, 0);
-    } else if (obj.type === 'cable') {
-      html = `<b>Кабель</b><br>${delBtn}`;
-    } else if (obj.type === 'link') {
-      html = `<b>Связь</b><br>${delBtn}`;
+    } else if (obj.type === 'cable' || obj.type === 'link') {
+      html = `<b>${obj.type === 'cable' ? 'Кабель' : 'Связь'}</b><br>${delBtn}`;
+      propContent.innerHTML = html;
     } else if (obj.type === 'device') {
-      const dev = devices[obj.index];
-      html = `<b>${dev.type}</b><br>${delBtn}`;
+      html = `<b>${devices[obj.index].type}</b><br>${delBtn}`;
+      propContent.innerHTML = html;
     }
-    propContent.innerHTML = html;
   }
 
-  // Обработчик удаления
+  // Удаление
   document.addEventListener('deleteObject', () => {
     if (!selectedObject) return;
     switch (selectedObject.type) {
@@ -631,28 +601,22 @@
     drawAll();
     autoSelectEquipment();
   });
-
-  // Клавиша Delete
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' && selectedObject) {
       document.dispatchEvent(new CustomEvent('deleteObject'));
     }
-    autoSelectEquipment();
   });
 
   // Обработчики мыши
   canvas.addEventListener('mousedown', (e) => {
     const pos = toLogical(e.clientX, e.clientY);
     if (currentTool === 'select') {
-      // проверка маркеров стены
       if (selectedObject?.type === 'wall') {
         const w = walls[selectedObject.index];
         if (Math.hypot(pos.x - w.x1, pos.y - w.y1) < 8/zoom) {
-          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'start' };
-          return;
+          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'start' }; return;
         } else if (Math.hypot(pos.x - w.x2, pos.y - w.y2) < 8/zoom) {
-          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'end' };
-          return;
+          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'end' }; return;
         }
       }
       const obj = findObjectAt(pos.x, pos.y);
@@ -660,7 +624,16 @@
         selectedObject = obj;
         updatePropertyPanel();
         drawAll();
-        autoSelectEquipment();
+        canvas._dragOffset = {
+          obj: obj,
+          startX: pos.x, startY: pos.y,
+          // сохранение начальных координат для перемещения
+          wallX1: obj.type === 'wall' ? walls[obj.index].x1 : null,
+          wallY1: obj.type === 'wall' ? walls[obj.index].y1 : null,
+          wallX2: obj.type === 'wall' ? walls[obj.index].x2 : null,
+          wallY2: obj.type === 'wall' ? walls[obj.index].y2 : null
+        };
+        canvas.style.cursor = 'grabbing';
         return;
       }
       isPanning = true;
@@ -679,7 +652,8 @@
           x: pos.x + i * 30,
           y: pos.y,
           angle: 0,
-          mount: eq.specs.mount || 'wall'
+          mount: eq.specs.mount || 'wall',
+          linkDeviceIndex: -1
         });
       }
       autoSelectEquipment();
@@ -688,15 +662,28 @@
       const text = prompt('Введите текст:');
       if (text) texts.push({ text, x: pos.x, y: pos.y });
       drawAll();
-      autoSelectEquipment();
     } else if (currentTool === 'cable') {
-      cableDrawing.push([pos.x, pos.y]);
-      drawAll();
-      autoSelectEquipment();
-    } else if (currentTool === 'link') {
-      if (!linkDrawing) {
-        linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
+      const hit = findObjectAt(pos.x, pos.y);
+      if (hit && (hit.type === 'camera' || hit.type === 'device')) {
+        if (!canvas._cableStart) {
+          canvas._cableStart = hit;
+          selectedObject = hit;
+          drawAll();
+        } else {
+          const start = canvas._cableStart;
+          let fromPos, toPos;
+          if (start.type === 'camera') fromPos = {x: cameras[start.index].x, y: cameras[start.index].y};
+          else fromPos = {x: devices[start.index].x, y: devices[start.index].y};
+          if (hit.type === 'camera') toPos = {x: cameras[hit.index].x, y: cameras[hit.index].y};
+          else toPos = {x: devices[hit.index].x, y: devices[hit.index].y};
+          links.push({ from: fromPos, to: toPos });
+          canvas._cableStart = null;
+          selectedObject = null;
+          drawAll();
+        }
       }
+    } else if (currentTool === 'link') {
+      if (!linkDrawing) linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
     } else if (['recorder','switch','monitor','pc'].includes(currentTool)) {
       const devType = currentTool;
       let article = null;
@@ -704,16 +691,56 @@
       else if (devType === 'switch' && switchSelect.value) article = equipment[parseInt(switchSelect.value)].article;
       devices.push({ type: devType, x: pos.x, y: pos.y, article });
       drawAll();
-      autoSelectEquipment();
     }
   });
 
   window.addEventListener('mousemove', (e) => {
+    if (canvas._dragOffset) {
+      const pos = toLogical(e.clientX, e.clientY);
+      const off = canvas._dragOffset;
+      const dx = pos.x - off.startX, dy = pos.y - off.startY;
+      switch (off.obj.type) {
+        case 'camera':
+          cameras[off.obj.index].x += dx;
+          cameras[off.obj.index].y += dy;
+          off.startX = pos.x; off.startY = pos.y;
+          break;
+        case 'wall':
+          walls[off.obj.index].x1 = off.wallX1 + dx;
+          walls[off.obj.index].y1 = off.wallY1 + dy;
+          walls[off.obj.index].x2 = off.wallX2 + dx;
+          walls[off.obj.index].y2 = off.wallY2 + dy;
+          break;
+        case 'text':
+          texts[off.obj.index].x += dx;
+          texts[off.obj.index].y += dy;
+          off.startX = pos.x; off.startY = pos.y;
+          break;
+        case 'device':
+          devices[off.obj.index].x += dx;
+          devices[off.obj.index].y += dy;
+          off.startX = pos.x; off.startY = pos.y;
+          break;
+        case 'cable':
+          cables[off.obj.index].points = cables[off.obj.index].points.map(p => [p[0]+dx, p[1]+dy]);
+          off.startX = pos.x; off.startY = pos.y;
+          break;
+        case 'link':
+          links[off.obj.index].from.x += dx;
+          links[off.obj.index].from.y += dy;
+          links[off.obj.index].to.x += dx;
+          links[off.obj.index].to.y += dy;
+          off.startX = pos.x; off.startY = pos.y;
+          break;
+      }
+      drawAll();
+      return;
+    }
+
     if (isPanning) {
       panX = e.clientX - panStart.x;
       panY = e.clientY - panStart.y;
       drawAll();
-      autoSelectEquipment();
     }
     if (draggingWallEndpoint) {
       const pos = toLogical(e.clientX, e.clientY);
@@ -721,24 +748,22 @@
       if (draggingWallEndpoint.point === 'start') { w.x1 = pos.x; w.y1 = pos.y; }
       else { w.x2 = pos.x; w.y2 = pos.y; }
       drawAll();
-      autoSelectEquipment();
     }
     if (currentTool === 'wall' && wallDrawing) {
       const pos = toLogical(e.clientX, e.clientY);
-      wallDrawing.x2 = pos.x;
-      wallDrawing.y2 = pos.y;
+      wallDrawing.x2 = pos.x; wallDrawing.y2 = pos.y;
       drawAll();
-      autoSelectEquipment();
     }
     if (currentTool === 'link' && linkDrawing) {
       const pos = toLogical(e.clientX, e.clientY);
       linkDrawing.to = {x: pos.x, y: pos.y};
       drawAll();
-      autoSelectEquipment();
     }
   });
 
   window.addEventListener('mouseup', () => {
+    canvas._dragOffset = null;
+    canvas._cableStart = null; // на всякий случай сбросим
     if (isPanning) { isPanning = false; canvas.style.cursor = 'grab'; }
     if (currentTool === 'wall' && wallDrawing) {
       const pos = { x: wallDrawing.x2, y: wallDrawing.y2 };
@@ -747,7 +772,6 @@
       }
       wallDrawing = null;
       drawAll();
-      autoSelectEquipment();
     }
     if (currentTool === 'link' && linkDrawing) {
       if (Math.hypot(linkDrawing.to.x - linkDrawing.from.x, linkDrawing.to.y - linkDrawing.from.y) > 5) {
@@ -755,7 +779,6 @@
       }
       linkDrawing = null;
       drawAll();
-      autoSelectEquipment();
     }
     draggingWallEndpoint = null;
   });
@@ -765,7 +788,6 @@
       cables.push({ points: [...cableDrawing], type: 'manual' });
       cableDrawing = [];
       drawAll();
-      autoSelectEquipment();
     }
   });
 
@@ -777,80 +799,57 @@
     panX = (e.clientX-rect.left) - ((e.clientX-rect.left)-panX)*(zoom/oldZoom);
     panY = (e.clientY-rect.top) - ((e.clientY-rect.top)-panY)*(zoom/oldZoom);
     drawAll();
-    autoSelectEquipment();
   });
 
-  // Смета (учитываем камеры, оборудование, связи и кабели)
-document.getElementById('calcBtn').addEventListener('click', () => {
-  let total = 0;
-  let report = '📊 СМЕТА (с логикой)\n━━━━━━━━━━━━━━━━\n';
-  
-  // Камеры
-  cameras.forEach(cam => {
-    const eq = equipment.find(e => e.article === cam.article);
-    const price = eq?.specs.price_rub || 0;
-    total += price;
-    report += `📷 ${eq?.article || cam.article}: ${price} ₽\n`;
+  // Смета
+  document.getElementById('calcBtn').addEventListener('click', () => {
+    let total = 0;
+    let report = '📊 СМЕТА\n━━━━━━━━\n';
+    cameras.forEach(cam => {
+      const eq = equipment.find(e => e.article === cam.article);
+      const price = eq?.specs.price_rub || 0;
+      total += price;
+      report += `📷 ${eq?.article || cam.article}: ${price} ₽\n`;
+    });
+    const recIdx = recorderSelect.value;
+    if (recIdx !== '') {
+      const rec = equipment[parseInt(recIdx)];
+      if (rec && rec.specs.price_rub) {
+        total += rec.specs.price_rub;
+        report += `🖥️ Регистратор ${rec.name}: ${rec.specs.price_rub} ₽\n`;
+        const channels = parseInt(rec.specs.channels) || 0;
+        if (channels > cameras.length + 4) report += `   ⚠️ Возможно, избыточен: ${channels} кан. для ${cameras.length} камер.\n`;
+      }
+    } else report += `🖥️ Регистратор: НЕ ВЫБРАН\n`;
+    const swIdx = switchSelect.value;
+    if (swIdx !== '') {
+      const sw = equipment[parseInt(swIdx)];
+      if (sw && sw.specs.price_rub) {
+        total += sw.specs.price_rub;
+        report += `🔌 Коммутатор ${sw.name}: ${sw.specs.price_rub} ₽\n`;
+        const totalPower = cameras.reduce((s, cam) => {
+          const eq = equipment.find(e => e.article === cam.article);
+          return s + (eq?.specs.power_consumption_w || 0);
+        }, 0);
+        const budget = parseFloat(sw.specs.poe_budget_w) || 0;
+        if (budget < totalPower) report += `   ❌ Ошибка: бюджет ${budget} Вт, требуется ${totalPower} Вт!\n`;
+      }
+    } else report += `🔌 Коммутатор: НЕ ВЫБРАН\n`;
+    let cableLen = 0;
+    cables.forEach(c => { for(let i=1;i<c.points.length;i++) cableLen += Math.hypot(c.points[i][0]-c.points[i-1][0], c.points[i][1]-c.points[i-1][1]); });
+    links.forEach(l => cableLen += Math.hypot(l.to.x-l.from.x, l.to.y-l.from.y));
+    const cableM = cableLen / getScale();
+    const cableCost = Math.round(cableM * 20);
+    total += cableCost;
+    report += `🔌 Кабель (${cableM.toFixed(1)} м): ${cableCost} ₽\n`;
+    const mountCost = cameras.length * 1500;
+    total += mountCost;
+    report += `🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n━━━━━━━━\n💰 ИТОГО: ${Math.round(total)} ₽`;
+    smetaBox.textContent = report;
+    smetaBox.style.display = 'block';
   });
 
-  // Регистратор (если выбран)
-  const recIdx = recorderSelect.value;
-  if (recIdx !== '') {
-    const rec = equipment[parseInt(recIdx)];
-    if (rec && rec.specs.price_rub) {
-      total += rec.specs.price_rub;
-      report += `🖥️ Регистратор ${rec.name}: ${rec.specs.price_rub} ₽\n`;
-      // Проверка избыточности
-      const channels = parseInt(rec.specs.channels) || 0;
-      if (channels > cameras.length + 4) {
-        report += `   ⚠️ Возможно, избыточен: ${channels} каналов для ${cameras.length} камер.\n`;
-      }
-    }
-  } else {
-    report += `🖥️ Регистратор: НЕ ВЫБРАН (добавьте в прайс)\n`;
-  }
-
-  // Свитч
-  const swIdx = switchSelect.value;
-  if (swIdx !== '') {
-    const sw = equipment[parseInt(swIdx)];
-    if (sw && sw.specs.price_rub) {
-      total += sw.specs.price_rub;
-      report += `🔌 Коммутатор ${sw.name}: ${sw.specs.price_rub} ₽\n`;
-      // Проверка PoE-бюджета (уже делается при выборе, но повторим)
-      const totalPower = cameras.reduce((s, cam) => {
-        const eq = equipment.find(e => e.article === cam.article);
-        return s + (eq?.specs.power_consumption_w || 0);
-      }, 0);
-      const budget = parseFloat(sw.specs.poe_budget_w) || 0;
-      if (budget < totalPower) {
-        report += `   ❌ Ошибка: бюджет коммутатора ${budget} Вт, требуется ${totalPower} Вт!\n`;
-      }
-    }
-  } else {
-    report += `🔌 Коммутатор: НЕ ВЫБРАН (добавьте в прайс)\n`;
-  }
-
-  // Кабель и монтаж (как раньше, но с учётом связей)
-  let cableLen = 0;
-  cables.forEach(c => { for(let i=1;i<c.points.length;i++) cableLen += Math.hypot(c.points[i][0]-c.points[i-1][0], c.points[i][1]-c.points[i-1][1]); });
-  links.forEach(l => cableLen += Math.hypot(l.to.x-l.from.x, l.to.y-l.from.y));
-  const scale = getScale();
-  const cableM = cableLen / scale;
-  const cableCost = Math.round(cableM * 20);
-  total += cableCost;
-  report += `🔌 Кабель (${cableM.toFixed(1)} м): ${cableCost} ₽\n`;
-  
-  const mountCost = cameras.length * 1500;
-  total += mountCost;
-  report += `🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n`;
-  report += `━━━━━━━━━━━━━━━━\n💰 ИТОГО: ${Math.round(total)} ₽`;
-  
-  smetaBox.textContent = report;
-  smetaBox.style.display = 'block';
-});
-
-  // Сохранение/загрузка (теперь с новыми объектами)
+  // Сохранение/загрузка
   document.getElementById('saveBtn').addEventListener('click', () => {
     const data = { walls, cameras, texts, cables, links, devices, equipment, scale: getScale() };
     const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
@@ -896,8 +895,14 @@ document.getElementById('calcBtn').addEventListener('click', () => {
     aiModal.style.display = 'flex';
   });
 
+  // Тема
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    document.body.classList.toggle('light');
+  });
+
   drawAll();
 })();
 </script>
+
 </body>
 </html>
