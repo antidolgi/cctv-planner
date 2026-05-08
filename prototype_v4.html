@@ -129,6 +129,7 @@
     canvas.width = window.innerWidth - 300;
     canvas.height = window.innerHeight;
     drawAll();
+    autoSelectEquipment();
   }
   resize();
   window.addEventListener('resize', resize);
@@ -145,6 +146,7 @@
     draggingWallEndpoint = null;
     updatePropertyPanel();
     drawAll();
+    autoSelectEquipment();
   }
   toolButtons.select.addEventListener('click', () => setTool('select'));
   toolButtons.wall.addEventListener('click', () => setTool('wall'));
@@ -210,34 +212,118 @@
   });
 
   function updateEquipmentSelects() {
-    equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
-    equipment.forEach((eq, idx) => {
-      if (eq.category === 'camera' || eq.category === 'камера') {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
-        equipmentSelect.appendChild(opt);
-      }
-    });
-    recorderSelect.innerHTML = '<option value="">Регистратор (нет)</option>';
-    equipment.forEach((eq, idx) => {
-      if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.textContent = eq.article + ' - ' + eq.name;
-        recorderSelect.appendChild(opt);
-      }
-    });
-    switchSelect.innerHTML = '<option value="">Свитч (нет)</option>';
-    equipment.forEach((eq, idx) => {
-      if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.textContent = eq.article + ' - ' + eq.name;
-        switchSelect.appendChild(opt);
-      }
-    });
+  // Камеры
+  equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
+  equipment.forEach((eq, idx) => {
+    if (eq.category === 'camera' || eq.category === 'камера') {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
+      equipmentSelect.appendChild(opt);
+    }
+  });
+  
+  // Регистраторы
+  recorderSelect.innerHTML = '<option value="">Авто (нет)</option>';
+  equipment.forEach((eq, idx) => {
+    if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${eq.article} - ${eq.name} (каналов: ${eq.specs.channels || '?'})`;
+      recorderSelect.appendChild(opt);
+    }
+  });
+  
+  // Свитчи
+  switchSelect.innerHTML = '<option value="">Авто (нет)</option>';
+  equipment.forEach((eq, idx) => {
+    if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${eq.article} - ${eq.name} (PoE бюджет: ${eq.specs.poe_budget_w || '?'} Вт)`;
+      switchSelect.appendChild(opt);
+    }
+  });
+
+  // Автоматический подбор
+  autoSelectEquipment();
+}
+  function autoSelectEquipment() {
+  if (cameras.length === 0) {
+    recorderSelect.value = '';
+    switchSelect.value = '';
+    return;
   }
+
+  // Собираем потребности: количество каналов, общая мощность, разрешения
+  const totalCameras = cameras.length;
+  let totalPower = 0;
+  const resolutions = new Set();
+  
+  cameras.forEach(cam => {
+    const eq = equipment.find(e => e.article === cam.article);
+    if (eq) {
+      if (eq.specs.power_consumption_w) totalPower += eq.specs.power_consumption_w;
+      if (eq.specs.resolution) resolutions.add(eq.specs.resolution);
+    }
+  });
+
+  // --- Подбор регистратора ---
+  // Ищем все регистраторы в прайсе, сортируем по каналам (предполагаем поле channels в specs)
+  const recorders = equipment.filter(e => e.category === 'recorder' || e.category === 'registrator' || e.category === 'регистратор');
+  let bestRecorder = null;
+  let bestRecorderIdx = -1;
+  
+  recorders.forEach((rec, idx) => {
+    const channels = parseInt(rec.specs.channels) || 0;
+    if (channels >= totalCameras) {
+      // Дополнительно можно проверить поддержку разрешений (если есть в specs)
+      if (!bestRecorder || channels < parseInt(bestRecorder.specs.channels)) {
+        // Выбираем минимально достаточный, чтобы не переплачивать
+        bestRecorder = rec;
+        bestRecorderIdx = equipment.indexOf(rec);
+      }
+    }
+  });
+  
+  if (bestRecorderIdx >= 0) {
+    recorderSelect.value = bestRecorderIdx;
+  } else {
+    recorderSelect.value = '';
+  }
+
+  // --- Подбор PoE-свитча ---
+  const switches = equipment.filter(e => e.category === 'switch' || e.category === 'poe' || e.category === 'коммутатор');
+  let bestSwitch = null;
+  let bestSwitchIdx = -1;
+  
+  switches.forEach((sw, idx) => {
+    const poeBudget = parseFloat(sw.specs.poe_budget_w) || 0;
+    const ports = parseInt(sw.specs.ports) || 0;
+    if (ports >= totalCameras && poeBudget >= totalPower) {
+      if (!bestSwitch || ports < parseInt(bestSwitch.specs.ports)) {
+        bestSwitch = sw;
+        bestSwitchIdx = equipment.indexOf(sw);
+      }
+    }
+  });
+  
+  if (bestSwitchIdx >= 0) {
+    switchSelect.value = bestSwitchIdx;
+  } else {
+    switchSelect.value = '';
+    // Можно вывести предупреждение, если нет подходящего
+  }
+  
+  // Проверка PoE-бюджета текущего выбранного свитча (если выбран вручную)
+  if (switchSelect.value !== '') {
+    const selSw = equipment[parseInt(switchSelect.value)];
+    const budget = parseFloat(selSw.specs.poe_budget_w) || 0;
+    if (budget < totalPower) {
+      alert(`Внимание! Суммарная мощность камер (${totalPower} Вт) превышает PoE-бюджет выбранного коммутатора ${selSw.name} (${budget} Вт). Выберите другой коммутатор или добавьте блоки питания.`);
+    }
+  }
+}
 
   function getSelectedCameraEquipment() {
     const idx = equipmentSelect.value;
@@ -500,6 +586,7 @@
             cameras[obj.index].angle = newAngle;
             val.textContent = newAngle + '°';
             drawAll();
+            autoSelectEquipment();
           });
         }
       }, 0);
@@ -542,6 +629,7 @@
     selectedObject = null;
     updatePropertyPanel();
     drawAll();
+    autoSelectEquipment();
   });
 
   // Клавиша Delete
@@ -549,6 +637,7 @@
     if (e.key === 'Delete' && selectedObject) {
       document.dispatchEvent(new CustomEvent('deleteObject'));
     }
+    autoSelectEquipment();
   });
 
   // Обработчики мыши
@@ -571,6 +660,7 @@
         selectedObject = obj;
         updatePropertyPanel();
         drawAll();
+        autoSelectEquipment();
         return;
       }
       isPanning = true;
@@ -592,14 +682,17 @@
           mount: eq.specs.mount || 'wall'
         });
       }
+      autoSelectEquipment();
       drawAll();
     } else if (currentTool === 'text') {
       const text = prompt('Введите текст:');
       if (text) texts.push({ text, x: pos.x, y: pos.y });
       drawAll();
+      autoSelectEquipment();
     } else if (currentTool === 'cable') {
       cableDrawing.push([pos.x, pos.y]);
       drawAll();
+      autoSelectEquipment();
     } else if (currentTool === 'link') {
       if (!linkDrawing) {
         linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
@@ -611,6 +704,7 @@
       else if (devType === 'switch' && switchSelect.value) article = equipment[parseInt(switchSelect.value)].article;
       devices.push({ type: devType, x: pos.x, y: pos.y, article });
       drawAll();
+      autoSelectEquipment();
     }
   });
 
@@ -619,6 +713,7 @@
       panX = e.clientX - panStart.x;
       panY = e.clientY - panStart.y;
       drawAll();
+      autoSelectEquipment();
     }
     if (draggingWallEndpoint) {
       const pos = toLogical(e.clientX, e.clientY);
@@ -626,17 +721,20 @@
       if (draggingWallEndpoint.point === 'start') { w.x1 = pos.x; w.y1 = pos.y; }
       else { w.x2 = pos.x; w.y2 = pos.y; }
       drawAll();
+      autoSelectEquipment();
     }
     if (currentTool === 'wall' && wallDrawing) {
       const pos = toLogical(e.clientX, e.clientY);
       wallDrawing.x2 = pos.x;
       wallDrawing.y2 = pos.y;
       drawAll();
+      autoSelectEquipment();
     }
     if (currentTool === 'link' && linkDrawing) {
       const pos = toLogical(e.clientX, e.clientY);
       linkDrawing.to = {x: pos.x, y: pos.y};
       drawAll();
+      autoSelectEquipment();
     }
   });
 
@@ -649,6 +747,7 @@
       }
       wallDrawing = null;
       drawAll();
+      autoSelectEquipment();
     }
     if (currentTool === 'link' && linkDrawing) {
       if (Math.hypot(linkDrawing.to.x - linkDrawing.from.x, linkDrawing.to.y - linkDrawing.from.y) > 5) {
@@ -656,6 +755,7 @@
       }
       linkDrawing = null;
       drawAll();
+      autoSelectEquipment();
     }
     draggingWallEndpoint = null;
   });
@@ -665,6 +765,7 @@
       cables.push({ points: [...cableDrawing], type: 'manual' });
       cableDrawing = [];
       drawAll();
+      autoSelectEquipment();
     }
   });
 
@@ -676,38 +777,78 @@
     panX = (e.clientX-rect.left) - ((e.clientX-rect.left)-panX)*(zoom/oldZoom);
     panY = (e.clientY-rect.top) - ((e.clientY-rect.top)-panY)*(zoom/oldZoom);
     drawAll();
+    autoSelectEquipment();
   });
 
   // Смета (учитываем камеры, оборудование, связи и кабели)
-  document.getElementById('calcBtn').addEventListener('click', () => {
-    let total = 0;
-    let report = '📊 СМЕТА\n━━━━━━━━\n';
-    cameras.forEach(cam => {
-      const eq = equipment.find(e => e.article === cam.article);
-      const price = eq?.specs.price_rub || 0;
-      total += price;
-      report += `📷 ${eq?.article || cam.article}: ${price} ₽\n`;
-    });
-    devices.forEach(dev => {
-      if (dev.article) {
-        const eq = equipment.find(e => e.article === dev.article);
-        if (eq && eq.specs.price_rub) { total += eq.specs.price_rub; report += `🔹 ${eq.name}: ${eq.specs.price_rub} ₽\n`; }
-      }
-    });
-    let cableLen = 0;
-    cables.forEach(c => { for(let i=1;i<c.points.length;i++) cableLen += Math.hypot(c.points[i][0]-c.points[i-1][0], c.points[i][1]-c.points[i-1][1]); });
-    links.forEach(l => cableLen += Math.hypot(l.to.x-l.from.x, l.to.y-l.from.y));
-    const scale = getScale();
-    const cableM = cableLen / scale;
-    const cableCost = Math.round(cableM * 20);
-    total += cableCost;
-    report += `🔌 Кабель (${cableM.toFixed(1)} м): ${cableCost} ₽\n`;
-    const mountCost = cameras.length * 1500;
-    total += mountCost;
-    report += `🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n━━━━━━━━\n💰 ИТОГО: ${Math.round(total)} ₽`;
-    smetaBox.textContent = report;
-    smetaBox.style.display = 'block';
+document.getElementById('calcBtn').addEventListener('click', () => {
+  let total = 0;
+  let report = '📊 СМЕТА (с логикой)\n━━━━━━━━━━━━━━━━\n';
+  
+  // Камеры
+  cameras.forEach(cam => {
+    const eq = equipment.find(e => e.article === cam.article);
+    const price = eq?.specs.price_rub || 0;
+    total += price;
+    report += `📷 ${eq?.article || cam.article}: ${price} ₽\n`;
   });
+
+  // Регистратор (если выбран)
+  const recIdx = recorderSelect.value;
+  if (recIdx !== '') {
+    const rec = equipment[parseInt(recIdx)];
+    if (rec && rec.specs.price_rub) {
+      total += rec.specs.price_rub;
+      report += `🖥️ Регистратор ${rec.name}: ${rec.specs.price_rub} ₽\n`;
+      // Проверка избыточности
+      const channels = parseInt(rec.specs.channels) || 0;
+      if (channels > cameras.length + 4) {
+        report += `   ⚠️ Возможно, избыточен: ${channels} каналов для ${cameras.length} камер.\n`;
+      }
+    }
+  } else {
+    report += `🖥️ Регистратор: НЕ ВЫБРАН (добавьте в прайс)\n`;
+  }
+
+  // Свитч
+  const swIdx = switchSelect.value;
+  if (swIdx !== '') {
+    const sw = equipment[parseInt(swIdx)];
+    if (sw && sw.specs.price_rub) {
+      total += sw.specs.price_rub;
+      report += `🔌 Коммутатор ${sw.name}: ${sw.specs.price_rub} ₽\n`;
+      // Проверка PoE-бюджета (уже делается при выборе, но повторим)
+      const totalPower = cameras.reduce((s, cam) => {
+        const eq = equipment.find(e => e.article === cam.article);
+        return s + (eq?.specs.power_consumption_w || 0);
+      }, 0);
+      const budget = parseFloat(sw.specs.poe_budget_w) || 0;
+      if (budget < totalPower) {
+        report += `   ❌ Ошибка: бюджет коммутатора ${budget} Вт, требуется ${totalPower} Вт!\n`;
+      }
+    }
+  } else {
+    report += `🔌 Коммутатор: НЕ ВЫБРАН (добавьте в прайс)\n`;
+  }
+
+  // Кабель и монтаж (как раньше, но с учётом связей)
+  let cableLen = 0;
+  cables.forEach(c => { for(let i=1;i<c.points.length;i++) cableLen += Math.hypot(c.points[i][0]-c.points[i-1][0], c.points[i][1]-c.points[i-1][1]); });
+  links.forEach(l => cableLen += Math.hypot(l.to.x-l.from.x, l.to.y-l.from.y));
+  const scale = getScale();
+  const cableM = cableLen / scale;
+  const cableCost = Math.round(cableM * 20);
+  total += cableCost;
+  report += `🔌 Кабель (${cableM.toFixed(1)} м): ${cableCost} ₽\n`;
+  
+  const mountCost = cameras.length * 1500;
+  total += mountCost;
+  report += `🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n`;
+  report += `━━━━━━━━━━━━━━━━\n💰 ИТОГО: ${Math.round(total)} ₽`;
+  
+  smetaBox.textContent = report;
+  smetaBox.style.display = 'block';
+});
 
   // Сохранение/загрузка (теперь с новыми объектами)
   document.getElementById('saveBtn').addEventListener('click', () => {
@@ -738,6 +879,7 @@
           selectedObject = null;
           updatePropertyPanel();
           drawAll();
+          autoSelectEquipment();
         } catch(err) { alert('Ошибка файла'); }
       };
       reader.readAsText(f);
