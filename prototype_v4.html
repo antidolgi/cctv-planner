@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Видео Помощник – Прототип v4 (Полный)</title>
+  <title>Видео Помощник – Разработчик Studio817.ru Прототип v4 (Полный)</title>
   <style>
     :root {
   --bg: #0f172a;
@@ -42,13 +42,63 @@ canvas { background: var(--bg); }
     .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 500px; width: 90%; color: #e2e8f0; }
     .modal-content button { margin-top: 10px; }
     label { display: block; margin-top: 4px; }
+    .left-panel {
+  order: 1;
+  width: 280px;
+  background: #1e293b;
+  padding: 10px;
+  font-size: 12px;
+  overflow-y: auto;
+}
+.right-panel {
+  order: 3;
+  width: 220px;
+  background: #1e293b;
+  padding: 10px;
+  font-size: 12px;
+  overflow-y: auto;
+}
+.canvas-container {
+  order: 2;
+  flex: 1;
+}
+body {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
   </style>
 </head>
 <body>
-<div class="sidebar">
+<div class="sidebar left-panel">
+  <h3>📋 Свойства</h3>
+  <div class="property-panel" id="propertyPanel">
+    <strong>📋</strong>
+    <div id="propContent">Выберите объект</div>
+  </div>
+
+  <h3>📦 Прайс-лист (CSV)</h3>
+  <label class="upload-btn" for="csvUpload">📂 Загрузить CSV</label>
+  <input type="file" id="csvUpload" accept=".csv">
+  <div id="csvStatus" style="font-size:11px; color:#94a3b8;">Не загружен</div>
+  <select id="equipmentSelect"><option value="">-- Выберите камеру --</option></select>
+
+  <h3>🎛 Оборудование</h3>
+  <select id="recorderSelect" style="margin-bottom:4px;"><option value="">Регистратор (нет)</option></select>
+  <select id="switchSelect"><option value="">Свитч (нет)</option></select>
+
+  <button id="calcBtn">💰 Рассчитать смету</button>
+  <div class="smeta-box" id="smetaBox" style="display:none;"></div>
+
+  <button id="saveBtn">💾 Сохранить проект</button>
+  <button id="loadBtn">📂 Загрузить проект</button>
+  <button id="aiAuditBtn">🤖 AI-аудит (симуляция)</button>
+</div>
+
+<!-- Новая правая панель инструментов -->
+<div class="sidebar right-panel">
   <h3>🔧 Инструменты</h3>
   <div class="toolbar">
-    <button id="themeToggle" style="margin-bottom:6px;">🌓 Тема</button>
     <button id="toolSelect" class="active">🖱️ Выбрать</button>
     <button id="toolWall">🧱 Стена</button>
     <button id="toolCamera">📷 Камера</button>
@@ -62,28 +112,7 @@ canvas { background: var(--bg); }
   </div>
   <label>Камер за раз: <input id="cameraCount" type="number" value="1" min="1" max="10"></label>
   <label>Масштаб (пикс/м): <input id="scaleInput" type="number" value="50" min="1" step="1"></label>
-
-  <h3>📦 Прайс-лист (CSV)</h3>
-  <label class="upload-btn" for="csvUpload">📂 Загрузить CSV</label>
-  <input type="file" id="csvUpload" accept=".csv">
-  <div id="csvStatus" style="font-size:11px; color:#94a3b8;">Не загружен</div>
-  <select id="equipmentSelect"><option value="">-- Выберите камеру --</option></select>
-
-  <h3>🎛 Оборудование</h3>
-  <select id="recorderSelect" style="margin-bottom:4px;"><option value="">Регистратор (нет)</option></select>
-  <select id="switchSelect"><option value="">Свитч (нет)</option></select>
-
-  <div class="property-panel" id="propertyPanel">
-    <strong>📋 Свойства</strong>
-    <div id="propContent">Выберите объект</div>
-  </div>
-
-  <button id="calcBtn">💰 Рассчитать смету</button>
-  <div class="smeta-box" id="smetaBox" style="display:none;"></div>
-
-  <button id="saveBtn">💾 Сохранить проект</button>
-  <button id="loadBtn">📂 Загрузить проект</button>
-  <button id="aiAuditBtn">🤖 AI-аудит (симуляция)</button>
+  <button id="themeToggle" style="margin-top:8px;">🌓 Тема</button>
 </div>
 
 <div class="canvas-container">
@@ -663,25 +692,62 @@ canvas { background: var(--bg); }
       if (text) texts.push({ text, x: pos.x, y: pos.y });
       drawAll();
     } else if (currentTool === 'cable') {
-      const hit = findObjectAt(pos.x, pos.y);
-      if (hit && (hit.type === 'camera' || hit.type === 'device')) {
-        if (!canvas._cableStart) {
-          canvas._cableStart = hit;
-          selectedObject = hit;
-          drawAll();
-        } else {
-          const start = canvas._cableStart;
-          let fromPos, toPos;
-          if (start.type === 'camera') fromPos = {x: cameras[start.index].x, y: cameras[start.index].y};
-          else fromPos = {x: devices[start.index].x, y: devices[start.index].y};
-          if (hit.type === 'camera') toPos = {x: cameras[hit.index].x, y: cameras[hit.index].y};
-          else toPos = {x: devices[hit.index].x, y: devices[hit.index].y};
-          links.push({ from: fromPos, to: toPos });
-          canvas._cableStart = null;
-          selectedObject = null;
-          drawAll();
-        }
+  // Ищем камеру или устройство с щедрым радиусом захвата
+  let hit = null;
+  for (let i = cameras.length - 1; i >= 0; i--) {
+    if (Math.hypot(pos.x - cameras[i].x, pos.y - cameras[i].y) < 20 / zoom) {
+      hit = { type: 'camera', index: i };
+      break;
+    }
+  }
+  if (!hit) {
+    for (let i = 0; i < devices.length; i++) {
+      const d = devices[i];
+      if (Math.abs(pos.x - d.x) < 15 / zoom && Math.abs(pos.y - d.y) < 15 / zoom) {
+        hit = { type: 'device', index: i };
+        break;
       }
+    }
+  }
+
+  if (hit) {
+    if (!canvas._cableStart) {
+      // Первый клик — выбираем начало
+      canvas._cableStart = hit;
+      selectedObject = hit; // временно подсвечиваем
+      drawAll();
+    } else {
+      // Второй клик — строим связь
+      const start = canvas._cableStart;
+      let fromPos, toPos;
+      if (start.type === 'camera') fromPos = { x: cameras[start.index].x, y: cameras[start.index].y };
+      else fromPos = { x: devices[start.index].x, y: devices[start.index].y };
+      if (hit.type === 'camera') toPos = { x: cameras[hit.index].x, y: cameras[hit.index].y };
+      else toPos = { x: devices[hit.index].x, y: devices[hit.index].y };
+
+      // Не даём соединить объект сам с собой
+      if (start.type === hit.type && start.index === hit.index) {
+        alert('Нельзя соединить объект сам с собой!');
+        canvas._cableStart = null;
+        selectedObject = null;
+        drawAll();
+        return;
+      }
+
+      links.push({ from: fromPos, to: toPos });
+      canvas._cableStart = null;
+      selectedObject = null;
+      window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    canvas._cableStart = null;
+    selectedObject = null;
+    drawAll();
+  }
+});
+      drawAll();
+    }
+  }
+}
     } else if (currentTool === 'link') {
       if (!linkDrawing) linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
     } else if (['recorder','switch','monitor','pc'].includes(currentTool)) {
