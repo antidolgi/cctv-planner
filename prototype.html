@@ -73,21 +73,12 @@
     <button onclick="document.getElementById('aiModal').style.display='none'">Закрыть</button>
   </div>
 </div>
-
 <script>
 (function() {
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
 
-  function resize() {
-    canvas.width = window.innerWidth - 300;
-    canvas.height = window.innerHeight;
-    drawAll();
-  }
-  resize();
-  window.addEventListener('resize', resize);
-
-  // ---- СОСТОЯНИЕ ----
+  // ---- ОБЯЗАТЕЛЬНО объявляем переменные до первого использования ----
   let zoom = 1, panX = 0, panY = 0;
   let isPanning = false, panStart = {x:0,y:0};
   let currentTool = 'select';
@@ -99,6 +90,15 @@
   let selectedObject = null;
   let wallDrawing = null;
   let cableDrawing = [];
+
+  // Теперь можно безопасно вызывать resize / drawAll
+  function resize() {
+    canvas.width = window.innerWidth - 300;
+    canvas.height = window.innerHeight;
+    drawAll();
+  }
+  resize();
+  window.addEventListener('resize', resize);
 
   // UI элементы
   const toolButtons = {
@@ -145,7 +145,9 @@
         const text = ev.target.result;
         const lines = text.split(/\r?\n/).filter(l => l.trim());
         if (lines.length < 2) throw new Error('Пустой файл');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        // Определяем разделитель (запятая или точка с запятой)
+        const sep = lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].split(sep).map(h => h.trim().toLowerCase());
         const articleIdx = headers.indexOf('article');
         const nameIdx = headers.indexOf('name');
         if (articleIdx === -1 || nameIdx === -1) throw new Error('CSV должен содержать article и name');
@@ -159,7 +161,7 @@
 
         equipment = [];
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map(c => c.trim());
+          const cols = lines[i].split(sep).map(c => c.trim());
           if (cols.length < articleIdx+1) continue;
           const specs = {};
           if (resIdx !== -1) specs.resolution = cols[resIdx];
@@ -189,7 +191,8 @@
   function updateEquipmentSelects() {
     equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
     equipment.forEach((eq, idx) => {
-      if (eq.category === 'camera') {
+      // Поддержка русских категорий
+      if (eq.category === 'camera' || eq.category === 'камера') {
         const opt = document.createElement('option');
         opt.value = idx;
         opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
@@ -198,7 +201,7 @@
     });
     recorderSelect.innerHTML = '<option value="">Авто</option>';
     equipment.forEach((eq, idx) => {
-      if (eq.category === 'recorder' || eq.category === 'registrator') {
+      if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
         const opt = document.createElement('option');
         opt.value = idx;
         opt.textContent = eq.article + ' - ' + eq.name;
@@ -207,7 +210,7 @@
     });
     switchSelect.innerHTML = '<option value="">Авто</option>';
     equipment.forEach((eq, idx) => {
-      if (eq.category === 'switch' || eq.category === 'poe') {
+      if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
         const opt = document.createElement('option');
         opt.value = idx;
         opt.textContent = eq.article + ' - ' + eq.name;
@@ -562,5 +565,6 @@
   drawAll();
 })();
 </script>
+
 </body>
 </html>
