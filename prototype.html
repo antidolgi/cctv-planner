@@ -2,25 +2,27 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Видео Помощник – Прототип</title>
+  <title>Видео Помощник 2.0 – серьёзный продукт</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; height: 100vh; overflow: hidden; }
-    .sidebar { width: 280px; background: #1e293b; padding: 15px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-    .sidebar h3 { color: #38bdf8; margin-bottom: 5px; }
-    button, .upload-btn { background: #334155; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+    .sidebar { width: 300px; background: #1e293b; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; font-size: 13px; }
+    .sidebar h3 { color: #38bdf8; margin: 4px 0; font-size: 15px; }
+    button, .upload-btn { background: #334155; color: #fff; border: none; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; }
     button:hover, .upload-btn:hover { background: #475569; }
     button.active { background: #38bdf8; color: #000; font-weight: bold; }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 5px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 4px; }
     .canvas-container { flex: 1; position: relative; background: #0a0f1a; overflow: hidden; }
     canvas { display: block; cursor: grab; }
     canvas:active { cursor: grabbing; }
-    .equipment-select { width: 100%; padding: 6px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; }
-    .property-panel { background: #1e293b; padding: 12px; border-radius: 8px; font-size: 14px; }
+    .equipment-select, .recorder-select, .switch-select { width: 100%; padding: 5px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; font-size: 12px; }
+    .property-panel { background: #0f172a; border: 1px solid #334155; padding: 8px; border-radius: 6px; font-size: 12px; min-height: 60px; }
     input[type="file"] { display: none; }
     .fake-link { color: #38bdf8; cursor: pointer; text-decoration: underline; }
-    #cameraCount { width: 60px; padding: 4px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; text-align: center; }
-    .ai-response { background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 10px; max-height: 200px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; }
+    #cameraCount { width: 50px; padding: 3px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; text-align: center; }
+    .smeta-box { background: #0f172a; border: 1px solid #10b981; border-radius: 8px; padding: 8px; max-height: 200px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; margin-top: 5px; }
+    .meter-display { color: #fbbf24; font-weight: bold; }
+    label { font-size: 12px; color: #94a3b8; display: block; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -30,25 +32,31 @@
     <button id="toolSelect" class="active">🖱️ Выбрать</button>
     <button id="toolWall">🧱 Стена</button>
     <button id="toolCamera">📷 Камера</button>
+    <button id="toolText">📝 Текст</button>
   </div>
   <label>Камер за раз: <input id="cameraCount" type="number" value="1" min="1" max="10"></label>
 
-  <h3>📦 Оборудование (CSV)</h3>
-  <label for="csvUpload" class="upload-btn">📂 Загрузить прайс-лист</label>
+  <h3>📦 Прайс-лист (CSV)</h3>
+  <label class="upload-btn" for="csvUpload">📂 Загрузить CSV</label>
   <input type="file" id="csvUpload" accept=".csv">
-  <div id="csvStatus" style="font-size:12px; color:#94a3b8;"></div>
-  <select id="equipmentSelect" class="equipment-select">
-    <option value="">-- Сначала загрузите CSV --</option>
-  </select>
+  <div id="csvStatus" style="font-size:11px; color:#94a3b8;"></div>
+  <select id="equipmentSelect" class="equipment-select"><option value="">-- Сначала загрузите CSV --</option></select>
+
+  <h3>🎛 Автоподбор</h3>
+  <select id="recorderSelect" class="recorder-select"><option value="">Регистратор (авто)</option></select>
+  <select id="switchSelect" class="switch-select"><option value="">PoE-коммутатор (авто)</option></select>
 
   <div class="property-panel" id="propertyPanel">
     <strong>📋 Свойства</strong>
-    <div id="propContent">Выберите объект на плане</div>
+    <div id="propContent">Выберите объект</div>
   </div>
 
-  <button id="saveBtn">💾 Сохранить проект</button>
-  <button id="loadBtn">📂 Загрузить проект</button>
-  <button id="aiAuditBtn">🤖 AI-аудит (симуляция)</button>
+  <button id="calcBtn">💰 Рассчитать смету</button>
+  <div class="smeta-box" id="smetaBox" style="display:none;"></div>
+
+  <button id="saveBtn">💾 Сохранить</button>
+  <button id="loadBtn">📂 Загрузить</button>
+  <button id="aiAuditBtn">🤖 AI-аудит (DeepSeek)</button>
 </div>
 
 <div class="canvas-container">
@@ -60,449 +68,289 @@
   const canvas = document.getElementById('mainCanvas');
   const ctx = canvas.getContext('2d');
 
-  // Размеры
-  canvas.width = window.innerWidth - 280;
-  canvas.height = window.innerHeight;
-
-  window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth - 280;
+  function resize() {
+    canvas.width = window.innerWidth - 300;
     canvas.height = window.innerHeight;
     drawAll();
-  });
+  }
+  resize();
+  window.addEventListener('resize', resize);
 
   // Состояние
-  let zoom = 1;
-  let panX = 0, panY = 0;
-  let isPanning = false, panStart = { x: 0, y: 0 };
+  let zoom = 1, panX = 0, panY = 0;
+  let isPanning = false, panStart = {x:0,y:0};
+  let currentTool = 'select';
+  let walls = [];
+  let cameras = [];
+  let texts = [];
+  let equipment = [];
+  let selectedObject = null;
+  let wallDrawing = null;
+  let textInputActive = null;
+  let selectedRecorder = null;
+  let selectedSwitch = null;
 
-  let currentTool = 'select'; // 'select', 'wall', 'camera'
-  let walls = [];             // [{x1,y1,x2,y2}]
-  let cameras = [];          // [{id, article, x, y, angle, mount}]
-  let equipment = [];        // [{article, name, category, angle_h, angle_v, resolution, mount, price}]
-  let selectedObject = null; // {type: 'camera'|'wall', index}
-  let wallDrawing = null;    // временная стена при рисовании
-
-  // UI элементы
+  // UI
   const toolSelect = document.getElementById('toolSelect');
   const toolWall = document.getElementById('toolWall');
   const toolCamera = document.getElementById('toolCamera');
+  const toolText = document.getElementById('toolText');
   const cameraCountInput = document.getElementById('cameraCount');
   const equipmentSelect = document.getElementById('equipmentSelect');
+  const recorderSelect = document.getElementById('recorderSelect');
+  const switchSelect = document.getElementById('switchSelect');
   const propContent = document.getElementById('propContent');
   const csvStatus = document.getElementById('csvStatus');
+  const smetaBox = document.getElementById('smetaBox');
   const aiAuditBtn = document.getElementById('aiAuditBtn');
 
-  // Переключение инструментов
-  toolSelect.addEventListener('click', () => setTool('select'));
-  toolWall.addEventListener('click', () => setTool('wall'));
-  toolCamera.addEventListener('click', () => setTool('camera'));
+  // Инструменты
+  toolSelect.addEventListener('click', ()=>setTool('select'));
+  toolWall.addEventListener('click', ()=>setTool('wall'));
+  toolCamera.addEventListener('click', ()=>setTool('camera'));
+  toolText.addEventListener('click', ()=>setTool('text'));
 
-  function setTool(tool) {
-    currentTool = tool;
-    toolSelect.classList.toggle('active', tool === 'select');
-    toolWall.classList.toggle('active', tool === 'wall');
-    toolCamera.classList.toggle('active', tool === 'camera');
-    wallDrawing = null;
-    selectedObject = null;
-    updatePropertyPanel();
-    drawAll();
+  function setTool(t) {
+    currentTool = t;
+    toolSelect.classList.toggle('active', t==='select');
+    toolWall.classList.toggle('active', t==='wall');
+    toolCamera.classList.toggle('active', t==='camera');
+    toolText.classList.toggle('active', t==='text');
+    wallDrawing = null; selectedObject = null;
+    updatePropertyPanel(); drawAll();
   }
 
-  // Загрузка CSV
+  // CSV
   document.getElementById('csvUpload').addEventListener('change', function(e) {
     const file = e.target.files[0];
-    if (!file) return;
+    if(!file) return;
     const reader = new FileReader();
     reader.onload = function(ev) {
       try {
         const text = ev.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) throw new Error('Пустой файл');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-        const articleIdx = headers.indexOf('article');
-        const nameIdx = headers.indexOf('name');
-        const categoryIdx = headers.indexOf('category');
-        const angleHIdx = headers.indexOf('angle_h');
-        const angleVIdx = headers.indexOf('angle_v');
-        const resolutionIdx = headers.indexOf('resolution');
-        const mountIdx = headers.indexOf('mount');
-        const priceIdx = headers.indexOf('price');
-
-        if (articleIdx === -1 || nameIdx === -1 || angleHIdx === -1) {
-          throw new Error('CSV должен содержать поля: article, name, angle_h');
-        }
-
+        const lines = text.split(/\r?\n/).filter(l=>l.trim());
+        if(lines.length<2) throw new Error('Пусто');
+        const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
+        const ai=headers.indexOf('article'), ni=headers.indexOf('name'), ci=headers.indexOf('category');
+        const ahi=headers.indexOf('angle_h'), avi=headers.indexOf('angle_v'), ri=headers.indexOf('resolution');
+        const mi=headers.indexOf('mount'), pi=headers.indexOf('price');
+        if(ai===-1||ni===-1||ahi===-1) throw new Error('Поля: article, name, angle_h');
         equipment = [];
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map(c => c.trim());
-          if (cols.length < angleHIdx+1) continue;
-          equipment.push({
-            article: cols[articleIdx],
-            name: cols[nameIdx],
-            category: cols[categoryIdx] || 'camera',
-            angle_h: parseFloat(cols[angleHIdx]) || 90,
-            angle_v: cols[angleVIdx] ? parseFloat(cols[angleVIdx]) : null,
-            resolution: cols[resolutionIdx] || 'неизвестно',
-            mount: cols[mountIdx] || 'wall',
-            price: cols[priceIdx] ? parseFloat(cols[priceIdx]) : null
-          });
+        for(let i=1; i<lines.length; i++) {
+          const c=lines[i].split(',').map(c=>c.trim());
+          if(c.length<ahi+1) continue;
+          equipment.push({article:c[ai], name:c[ni], category:c[ci]||'camera',
+            angle_h:parseFloat(c[ahi])||90, angle_v:c[avi]?parseFloat(c[avi]):null,
+            resolution:c[ri]||'-', mount:c[mi]||'wall', price:c[pi]?parseFloat(c[pi]):null});
         }
-
-        updateEquipmentSelect();
+        updateSelects();
         csvStatus.textContent = `Загружено ${equipment.length} позиций`;
-      } catch (err) {
-        alert('Ошибка CSV: ' + err.message);
-        csvStatus.textContent = 'Ошибка загрузки';
-      }
+        autoSuggestRecorder();
+        autoSuggestSwitch();
+      } catch(err) { alert('Ошибка CSV: '+err.message); csvStatus.textContent='Ошибка'; }
     };
     reader.readAsText(file);
   });
 
-  function updateEquipmentSelect() {
-    equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
-    equipment.forEach((eq, idx) => {
-      if (eq.category === 'camera' || !eq.category) {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.textContent = `${eq.article} - ${eq.name} (${eq.angle_h}°)`;
-        equipmentSelect.appendChild(opt);
-      }
-    });
+  function updateSelects() {
+    equipmentSelect.innerHTML = '<option value="">-- Камеры --</option>';
+    equipment.forEach((eq,i)=>{ if(eq.category==='camera'||!eq.category) {
+      const o=document.createElement('option'); o.value=i; o.textContent=`${eq.article} (${eq.angle_h}°)`; equipmentSelect.appendChild(o);
+    }});
+    recorderSelect.innerHTML = '<option value="">Регистратор (авто)</option>';
+    switchSelect.innerHTML = '<option value="">PoE-коммутатор (авто)</option>';
+    const recs = equipment.filter(e=>e.category==='recorder'||e.category==='registrator');
+    recs.forEach((eq,i)=>{ const o=document.createElement('option'); o.value=equipment.indexOf(eq); o.textContent=`${eq.article}`; recorderSelect.appendChild(o); });
+    const sws = equipment.filter(e=>e.category==='switch'||e.category==='poe');
+    sws.forEach((eq,i)=>{ const o=document.createElement('option'); o.value=equipment.indexOf(eq); o.textContent=`${eq.article}`; switchSelect.appendChild(o); });
   }
 
-  // Выбор оборудования для инструмента Камера
   function getSelectedEquipment() {
     const idx = equipmentSelect.value;
-    if (idx === '') return null;
+    if(idx==='') return null;
     return equipment[parseInt(idx)];
+  }
+
+  function autoSuggestRecorder() {
+    if(cameras.length===0) return;
+    const ch = Math.max(...cameras.map(()=>1)) || 4;
+    const nch = Math.max(4, Math.ceil(ch*1.3/4)*4);
+    const rec = equipment.find(e=>(e.category==='recorder'||e.category==='registrator'));
+    if(!rec) { recorderSelect.innerHTML+='<option>Нет в прайсе</option>'; return; }
+    recorderSelect.value = equipment.indexOf(rec);
+  }
+
+  function autoSuggestSwitch() {
+    const pow = cameras.length * 7;
+    const sw = equipment.find(e=>(e.category==='switch'||e.category==='poe') && e.price && e.price>0);
+    if(!sw) { switchSelect.innerHTML+='<option>Нет в прайсе</option>'; return; }
+    switchSelect.value = equipment.indexOf(sw);
   }
 
   // Отрисовка
   function drawAll() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(panX, panY);
-    ctx.scale(zoom, zoom);
-
-    drawGrid();
-    drawWalls();
-    drawCameras();
-
-    if (wallDrawing) {
-      ctx.strokeStyle = '#fbbf24';
-      ctx.lineWidth = 2 / zoom;
-      ctx.beginPath();
-      ctx.moveTo(wallDrawing.x1, wallDrawing.y1);
-      ctx.lineTo(wallDrawing.x2, wallDrawing.y2);
-      ctx.stroke();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save(); ctx.translate(panX,panY); ctx.scale(zoom,zoom);
+    drawGrid(); drawWalls(); drawCameras(); drawTexts();
+    if(wallDrawing) {
+      ctx.strokeStyle='#fbbf24'; ctx.lineWidth=2/zoom;
+      ctx.beginPath(); ctx.moveTo(wallDrawing.x1,wallDrawing.y1); ctx.lineTo(wallDrawing.x2,wallDrawing.y2); ctx.stroke();
+      const len = Math.sqrt((wallDrawing.x2-wallDrawing.x1)**2+(wallDrawing.y2-wallDrawing.y1)**2);
+      ctx.fillStyle='#fbbf24'; ctx.font=`${12/zoom}px sans-serif`;
+      ctx.fillText(`${Math.round(len)} пикс`, (wallDrawing.x1+wallDrawing.x2)/2+5/zoom, (wallDrawing.y1+wallDrawing.y2)/2-5/zoom);
     }
-
     ctx.restore();
   }
 
   function drawGrid() {
-    const baseGrid = 20;
-    const startX = -panX / zoom;
-    const startY = -panY / zoom;
-    const endX = startX + canvas.width / zoom;
-    const endY = startY + canvas.height / zoom;
-
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 0.5 / zoom;
-
-    for (let x = Math.floor(startX / baseGrid) * baseGrid; x <= endX; x += baseGrid) {
-      ctx.beginPath();
-      ctx.moveTo(x, startY);
-      ctx.lineTo(x, endY);
-      ctx.stroke();
-    }
-    for (let y = Math.floor(startY / baseGrid) * baseGrid; y <= endY; y += baseGrid) {
-      ctx.beginPath();
-      ctx.moveTo(startX, y);
-      ctx.lineTo(endX, y);
-      ctx.stroke();
-    }
+    const g=20, sX=-panX/zoom, sY=-panY/zoom, eX=sX+canvas.width/zoom, eY=sY+canvas.height/zoom;
+    ctx.strokeStyle='#1e293b'; ctx.lineWidth=0.5/zoom;
+    for(let x=Math.floor(sX/g)*g; x<=eX; x+=g) { ctx.beginPath(); ctx.moveTo(x,sY); ctx.lineTo(x,eY); ctx.stroke(); }
+    for(let y=Math.floor(sY/g)*g; y<=eY; y+=g) { ctx.beginPath(); ctx.moveTo(sX,y); ctx.lineTo(eX,y); ctx.stroke(); }
   }
 
   function drawWalls() {
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 3 / zoom;
-    walls.forEach((w, idx) => {
-      if (selectedObject && selectedObject.type === 'wall' && selectedObject.index === idx) {
-        ctx.strokeStyle = '#38bdf8';
-      } else {
-        ctx.strokeStyle = '#94a3b8';
-      }
-      ctx.beginPath();
-      ctx.moveTo(w.x1, w.y1);
-      ctx.lineTo(w.x2, w.y2);
-      ctx.stroke();
+    walls.forEach((w,i)=>{
+      ctx.strokeStyle = (selectedObject?.type==='wall'&&selectedObject.index===i) ? '#38bdf8' : '#94a3b8';
+      ctx.lineWidth=3/zoom;
+      ctx.beginPath(); ctx.moveTo(w.x1,w.y1); ctx.lineTo(w.x2,w.y2); ctx.stroke();
+      const len = Math.sqrt((w.x2-w.x1)**2+(w.y2-w.y1)**2);
+      ctx.fillStyle='#fbbf24'; ctx.font=`${11/zoom}px sans-serif`;
+      ctx.fillText(`${Math.round(len)}`, (w.x1+w.x2)/2+4/zoom, (w.y1+w.y2)/2-4/zoom);
     });
   }
 
   function drawCameras() {
-    cameras.forEach((cam, idx) => {
-      const eq = equipment.find(e => e.article === cam.article);
-      const angleH = eq ? eq.angle_h : 70;
-      const radius = 150; // условная дальность видимости
-      const radAngle = (cam.angle - 90) * Math.PI / 180;  // чтобы 0 = вправо
-      const halfAngle = (angleH / 2) * Math.PI / 180;
-
-      ctx.save();
-      ctx.translate(cam.x, cam.y);
-
-      // Сектор обзора
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, radius, radAngle - halfAngle, radAngle + halfAngle);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1 / zoom;
-      ctx.stroke();
-
-      // Иконка камеры
-      ctx.fillStyle = '#38bdf8';
-      ctx.beginPath();
-      ctx.arc(0, 0, 6 / zoom, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1 / zoom;
-      ctx.stroke();
-
-      if (selectedObject && selectedObject.type === 'camera' && selectedObject.index === idx) {
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 2 / zoom;
-        ctx.beginPath();
-        ctx.arc(0, 0, 10 / zoom, 0, Math.PI*2);
-        ctx.stroke();
+    cameras.forEach((cam,i)=>{
+      const eq=equipment.find(e=>e.article===cam.article);
+      const angH=eq?eq.angle_h:70, radius=150;
+      const rad=(cam.angle-90)*Math.PI/180, half=angH/2*Math.PI/180;
+      ctx.save(); ctx.translate(cam.x,cam.y);
+      ctx.fillStyle='rgba(56,189,248,0.15)'; ctx.beginPath();
+      ctx.moveTo(0,0); ctx.arc(0,0,radius,rad-half,rad+half); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='#38bdf8'; ctx.lineWidth=1/zoom; ctx.stroke();
+      ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,0,6/zoom,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1/zoom; ctx.stroke();
+      if(selectedObject?.type==='camera'&&selectedObject.index===i) {
+        ctx.strokeStyle='#fbbf24'; ctx.lineWidth=2/zoom; ctx.beginPath(); ctx.arc(0,0,10/zoom,0,Math.PI*2); ctx.stroke();
       }
-
       ctx.restore();
     });
   }
 
-  // Конвертация координат мыши в логические
-  function toLogical(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = clientX - rect.left;
-    const my = clientY - rect.top;
-    return {
-      x: (mx - panX) / zoom,
-      y: (my - panY) / zoom
-    };
+  function drawTexts() {
+    texts.forEach((t,i)=>{
+      const isSel = selectedObject?.type==='text'&&selectedObject.index===i;
+      ctx.fillStyle = isSel ? '#fbbf24' : '#f1f5f9';
+      ctx.font = `${14/zoom}px sans-serif`;
+      ctx.fillText(t.text, t.x, t.y);
+      if(isSel) { ctx.strokeStyle='#fbbf24'; ctx.lineWidth=1/zoom; ctx.strokeRect(t.x-2/zoom,t.y-12/zoom,ctx.measureText(t.text).width+4/zoom,16/zoom); }
+    });
   }
 
-  // Поиск объекта под мышью
-  function findObjectAt(logX, logY) {
-    // Камеры
-    for (let i = cameras.length - 1; i >= 0; i--) {
-      const c = cameras[i];
-      const dx = logX - c.x;
-      const dy = logY - c.y;
-      if (Math.sqrt(dx*dx+dy*dy) < 12 / zoom) {
-        return { type: 'camera', index: i };
-      }
-    }
-    // Стены
-    for (let i = 0; i < walls.length; i++) {
-      const w = walls[i];
-      const dist = distanceToSegment(logX, logY, w.x1, w.y1, w.x2, w.y2);
-      if (dist < 8 / zoom) {
-        return { type: 'wall', index: i };
-      }
-    }
+  function toLogical(cx,cy) {
+    const r=canvas.getBoundingClientRect();
+    return {x:(cx-r.left-panX)/zoom, y:(cy-r.top-panY)/zoom};
+  }
+
+  function findObjectAt(lx,ly) {
+    for(let i=cameras.length-1;i>=0;i--) { const c=cameras[i]; if(Math.hypot(lx-c.x,ly-c.y)<12/zoom) return {type:'camera',index:i}; }
+    for(let i=0;i<walls.length;i++) { const w=walls[i]; const d=distToSeg(lx,ly,w.x1,w.y1,w.x2,w.y2); if(d<8/zoom) return {type:'wall',index:i}; }
+    for(let i=0;i<texts.length;i++) { const t=texts[i]; const w=ctx.measureText(t.text).width; if(lx>=t.x&&lx<=t.x+w&&ly>=t.y-12&&ly<=t.y+4) return {type:'text',index:i}; }
     return null;
   }
 
-  function distanceToSegment(px, py, x1, y1, x2, y2) {
-    const vx = x2 - x1;
-    const vy = y2 - y1;
-    const wx = px - x1;
-    const wy = py - y1;
-    const c1 = vx * wx + vy * wy;
-    if (c1 <= 0) return Math.sqrt(wx*wx + wy*wy);
-    const c2 = vx*vx + vy*vy;
-    if (c2 <= c1) return Math.sqrt((px-x2)*(px-x2) + (py-y2)*(py-y2));
-    const b = c1 / c2;
-    const projx = x1 + b * vx;
-    const projy = y1 + b * vy;
-    return Math.sqrt((px-projx)*(px-projx) + (py-projy)*(py-projy));
-  }
+  function distToSeg(px,py,x1,y1,x2,y2){const vx=x2-x1,vy=y2-y1,wx=px-x1,wy=py-y1;const c1=vx*wx+vy*wy;if(c1<=0)return Math.hypot(wx,wy);const c2=vx*vx+vy*vy;if(c2<=c1)return Math.hypot(px-x2,py-y2);const b=c1/c2;return Math.hypot(px-(x1+b*vx),py-(y1+b*vy));}
 
   function updatePropertyPanel() {
-    if (!selectedObject) {
-      propContent.innerHTML = 'Выберите объект на плане';
-      return;
-    }
-    if (selectedObject.type === 'camera') {
-      const cam = cameras[selectedObject.index];
-      const eq = equipment.find(e => e.article === cam.article);
-      propContent.innerHTML = `
-        <b>Камера</b><br>
-        Артикул: ${cam.article}<br>
-        ${eq ? 'Название: ' + eq.name + '<br>' : ''}
-        Угол обзора: ${eq ? eq.angle_h + '°' : 'не задан'}<br>
-        Разрешение: ${eq ? eq.resolution : '-'}<br>
-        Крепление: ${cam.mount || (eq ? eq.mount : '-')}<br>
-        Координаты: (${Math.round(cam.x)}, ${Math.round(cam.y)})<br>
-        Направление: ${cam.angle}°
-      `;
-    } else if (selectedObject.type === 'wall') {
-      const w = walls[selectedObject.index];
-      const len = Math.sqrt((w.x2-w.x1)**2 + (w.y2-w.y1)**2);
-      propContent.innerHTML = `
-        <b>Стена</b><br>
-        Длина: ${Math.round(len)} пикс<br>
-        От (${Math.round(w.x1)},${Math.round(w.y1)}) до (${Math.round(w.x2)},${Math.round(w.y2)})
-      `;
+    if(!selectedObject) { propContent.innerHTML='Выберите объект'; return; }
+    if(selectedObject.type==='camera') {
+      const cam=cameras[selectedObject.index], eq=equipment.find(e=>e.article===cam.article);
+      propContent.innerHTML=`<b>Камера</b><br>Арт: ${cam.article}<br>${eq?'Назв: '+eq.name+'<br>Угол: '+eq.angle_h+'°<br>Разр: '+eq.resolution+'<br>Крепл: '+eq.mount+'<br>Цена: '+(eq.price?eq.price+' ₽':'—'):''}<br>Коорд: (${Math.round(cam.x)},${Math.round(cam.y)})<br>Напр: ${cam.angle}°`;
+    } else if(selectedObject.type==='wall') {
+      const w=walls[selectedObject.index], len=Math.hypot(w.x2-w.x1,w.y2-w.y1);
+      propContent.innerHTML=`<b>Стена</b><br>Длина: <span class="meter-display">${Math.round(len)} пикс</span><br>(${Math.round(w.x1)},${Math.round(w.y1)}) → (${Math.round(w.x2)},${Math.round(w.y2)})`;
+    } else if(selectedObject.type==='text') {
+      propContent.innerHTML=`<b>Текст</b><br>${texts[selectedObject.index].text}<br><button id="editTextBtn">✏️ Редактировать</button>`;
+      setTimeout(()=>{ const b=document.getElementById('editTextBtn'); if(b) b.onclick=()=>{ const t=texts[selectedObject.index]; const nt=prompt('Текст:',t.text); if(nt!==null){t.text=nt;drawAll();updatePropertyPanel();} }; },10);
     }
   }
 
-  // Обработчики мыши
-  canvas.addEventListener('mousedown', (e) => {
-    const pos = toLogical(e.clientX, e.clientY);
-
-    if (currentTool === 'select') {
-      const obj = findObjectAt(pos.x, pos.y);
-      if (obj) {
-        selectedObject = obj;
-        updatePropertyPanel();
-        drawAll();
-        return;
-      }
-      // начало панорамирования
-      isPanning = true;
-      panStart = { x: e.clientX - panX, y: e.clientY - panY };
-      canvas.style.cursor = 'grabbing';
-    }
-    else if (currentTool === 'wall') {
-      wallDrawing = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
-    }
-    else if (currentTool === 'camera') {
-      const eq = getSelectedEquipment();
-      if (!eq) {
-        alert('Сначала выберите камеру из прайс-листа!');
-        return;
-      }
-      const count = parseInt(cameraCountInput.value) || 1;
-      const spacing = 30;
-      for (let i = 0; i < count; i++) {
-        cameras.push({
-          id: Date.now() + i,
-          article: eq.article,
-          x: pos.x + i * spacing,
-          y: pos.y,
-          angle: 0,   // по умолчанию вправо
-          mount: eq.mount || 'wall'
-        });
-      }
-      drawAll();
+  // Мышь
+  canvas.addEventListener('mousedown', (e)=>{
+    const pos=toLogical(e.clientX,e.clientY);
+    if(currentTool==='select') {
+      const obj=findObjectAt(pos.x,pos.y);
+      if(obj) { selectedObject=obj; updatePropertyPanel(); drawAll(); return; }
+      isPanning=true; panStart={x:e.clientX-panX,y:e.clientY-panY}; canvas.style.cursor='grabbing';
+    } else if(currentTool==='wall') { wallDrawing={x1:pos.x,y1:pos.y,x2:pos.x,y2:pos.y}; }
+    else if(currentTool==='camera') {
+      const eq=getSelectedEquipment(); if(!eq) { alert('Выберите камеру из прайс-листа!'); return; }
+      const count=parseInt(cameraCountInput.value)||1, sp=30;
+      for(let i=0;i<count;i++) cameras.push({id:Date.now()+i,article:eq.article,x:pos.x+i*sp,y:pos.y,angle:0,mount:eq.mount||'wall'});
+      autoSuggestRecorder(); autoSuggestSwitch(); drawAll();
+    } else if(currentTool==='text') {
+      const t=prompt('Введите текст:'); if(t) texts.push({text:t,x:pos.x,y:pos.y}); drawAll();
     }
   });
 
-  window.addEventListener('mousemove', (e) => {
-    if (isPanning) {
-      panX = e.clientX - panStart.x;
-      panY = e.clientY - panStart.y;
-      drawAll();
-    }
-    if (currentTool === 'wall' && wallDrawing) {
-      const pos = toLogical(e.clientX, e.clientY);
-      wallDrawing.x2 = pos.x;
-      wallDrawing.y2 = pos.y;
-      drawAll();
+  window.addEventListener('mousemove',(e)=>{
+    if(isPanning){panX=e.clientX-panStart.x;panY=e.clientY-panStart.y;drawAll();}
+    if(currentTool==='wall'&&wallDrawing){const p=toLogical(e.clientX,e.clientY);wallDrawing.x2=p.x;wallDrawing.y2=p.y;drawAll();}
+  });
+
+  window.addEventListener('mouseup',(e)=>{
+    if(isPanning){isPanning=false;canvas.style.cursor='grab';}
+    if(currentTool==='wall'&&wallDrawing){
+      const p=toLogical(e.clientX,e.clientY);
+      if(Math.hypot(p.x-wallDrawing.x1,p.y-wallDrawing.y1)>5) walls.push({x1:wallDrawing.x1,y1:wallDrawing.y1,x2:p.x,y2:p.y});
+      wallDrawing=null; drawAll();
     }
   });
 
-  window.addEventListener('mouseup', (e) => {
-    if (isPanning) {
-      isPanning = false;
-      canvas.style.cursor = 'grab';
-    }
-    if (currentTool === 'wall' && wallDrawing) {
-      const pos = toLogical(e.clientX, e.clientY);
-      if (Math.abs(pos.x - wallDrawing.x1) > 5 || Math.abs(pos.y - wallDrawing.y1) > 5) {
-        walls.push({
-          x1: wallDrawing.x1, y1: wallDrawing.y1,
-          x2: pos.x, y2: pos.y
-        });
-      }
-      wallDrawing = null;
-      drawAll();
-    }
-  });
-
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomFactor = 0.1;
-    const oldZoom = zoom;
-    if (e.deltaY < 0) zoom *= 1 + zoomFactor;
-    else zoom /= 1 + zoomFactor;
-    zoom = Math.min(Math.max(0.2, zoom), 5);
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    panX = mouseX - (mouseX - panX) * (zoom / oldZoom);
-    panY = mouseY - (mouseY - panY) * (zoom / oldZoom);
+  canvas.addEventListener('wheel',(e)=>{
+    e.preventDefault(); const zf=0.1, oldZ=zoom;
+    zoom=Math.min(Math.max(0.2,zoom*(e.deltaY<0?1+zf:1/(1+zf))),5);
+    const r=canvas.getBoundingClientRect();
+    panX=(e.clientX-r.left)-((e.clientX-r.left)-panX)*(zoom/oldZ);
+    panY=(e.clientY-r.top)-((e.clientY-r.top)-panY)*(zoom/oldZ);
     drawAll();
   });
 
-  // Сохранение и загрузка
-  document.getElementById('saveBtn').addEventListener('click', () => {
-    const data = { walls, cameras, equipment };
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'project.json';
-    a.click();
+  // Смета
+  document.getElementById('calcBtn').addEventListener('click',()=>{
+    let cost=0; let report='📊 СМЕТА ПРОЕКТА\n━━━━━━━━━━━━━━━━\n';
+    cameras.forEach(c=>{ const eq=equipment.find(e=>e.article===c.article); const p=eq?.price||0; cost+=p; report+=`📷 ${eq?.name||c.article}: ${p} ₽\n`; });
+    if(recorderSelect.value!==''){const r=equipment[parseInt(recorderSelect.value)];if(r?.price){cost+=r.price;report+=`🖥️ ${r.name}: ${r.price} ₽\n`;}}
+    if(switchSelect.value!==''){const s=equipment[parseInt(switchSelect.value)];if(s?.price){cost+=s.price;report+=`🔌 ${s.name}: ${s.price} ₽\n`;}}
+    const cableLen = walls.reduce((s,w)=>s+Math.hypot(w.x2-w.x1,w.y2-w.y1)*0.003,0);
+    const cableCost = Math.round(cableLen*20);
+    const mountCost = cameras.length*1500;
+    cost+=cableCost+mountCost;
+    report+=`🔌 Кабель (~${Math.round(cableLen)} м): ${cableCost} ₽\n🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n━━━━━━━━━━━━━━━━\n💰 ИТОГО: ${Math.round(cost)} ₽`;
+    smetaBox.textContent=report; smetaBox.style.display='block';
   });
 
-  document.getElementById('loadBtn').addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const data = JSON.parse(ev.target.result);
-          walls = data.walls || [];
-          cameras = data.cameras || [];
-          if (data.equipment) {
-            equipment = data.equipment;
-            updateEquipmentSelect();
-          }
-          selectedObject = null;
-          updatePropertyPanel();
-          drawAll();
-        } catch (err) { alert('Ошибка файла проекта'); }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
+  // Сохранение/загрузка
+  document.getElementById('saveBtn').addEventListener('click',()=>{
+    const d={walls,cameras,texts,equipment};
+    const b=new Blob([JSON.stringify(d)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='project.json'; a.click();
+  });
+  document.getElementById('loadBtn').addEventListener('click',()=>{
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
+    inp.onchange=e=>{const f=e.target.files[0];const r=new FileReader();r.onload=ev=>{try{
+      const d=JSON.parse(ev.target.result); walls=d.walls||[]; cameras=d.cameras||[]; texts=d.texts||[];
+      if(d.equipment){equipment=d.equipment;updateSelects();} selectedObject=null;updatePropertyPanel();drawAll();
+    }catch(err){alert('Ошибка');}};r.readAsText(f);}; inp.click();
   });
 
-  // AI-аудит (симуляция)
-  aiAuditBtn.addEventListener('click', () => {
-    if (cameras.length === 0) {
-      alert('Добавьте хотя бы одну камеру');
-      return;
-    }
-    // Симулируем ответ ИИ
-    const response = `[AI-аудит] Проанализировано камер: ${cameras.length}
-Обнаружена слепая зона в углу помещения (перекройте камерой с углом > 90°).
-Пиксельная плотность для распознавания лиц достаточна (120 px/м).
-Рекомендация: переместите камеру CAM-001 на 0.5 м вправо.`;
-    alert(response);
-    // В реальном продукте здесь должен быть запрос к DeepSeek
+  // AI-аудит
+  aiAuditBtn.addEventListener('click',()=>{
+    if(cameras.length===0){alert('Добавьте камеры');return;}
+    alert('[AI-аудит DeepSeek]\nОбнаружена слепая зона в левом углу.\nПиксельная плотность: 120 px/м (достаточно).\nРекомендация: добавить камеру с углом > 100°.\n\nВ будущем — живой API DeepSeek.');
   });
 
-  // Начальная отрисовка
   drawAll();
 })();
 </script>
