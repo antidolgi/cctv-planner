@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Видео Помощник – Прототип v4 (Полный)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 300px; background: #1e293b; padding: 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; font-size: 12px; }
+    .sidebar h3 { color: #38bdf8; margin: 4px 0; font-size: 14px; }
+    button, .upload-btn { background: #334155; color: #fff; border: none; padding: 6px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; transition: 0.2s; }
+    button:hover, .upload-btn:hover { background: #475569; }
+    button.active { background: #38bdf8; color: #000; font-weight: bold; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 3px; }
+    .canvas-container { flex: 1; position: relative; background: #0a0f1a; overflow: hidden; }
+    canvas { display: block; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    select, input[type="range"] { width: 100%; padding: 4px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; font-size: 11px; }
+    .property-panel { background: #0f172a; border: 1px solid #334155; padding: 6px; border-radius: 6px; font-size: 11px; max-height: 160px; overflow-y: auto; }
+    input[type="file"] { display: none; }
+    #cameraCount { width: 45px; padding: 2px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; text-align: center; }
+    .smeta-box { background: #0f172a; border: 1px solid #10b981; border-radius: 8px; padding: 6px; max-height: 150px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; margin-top: 5px; }
+    .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:10; }
+    .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 500px; width: 90%; color: #e2e8f0; }
+    .modal-content button { margin-top: 10px; }
+    label { display: block; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="sidebar">
+  <h3>🔧 Инструменты</h3>
+  <div class="toolbar">
+    <button id="toolSelect" class="active">🖱️ Выбрать</button>
+    <button id="toolWall">🧱 Стена</button>
+    <button id="toolCamera">📷 Камера</button>
+    <button id="toolText">📝 Текст</button>
+    <button id="toolCable">🔌 Кабель</button>
+    <button id="toolLink">🔗 Связь</button>
+    <button id="toolRecorder">🖥️ Регистратор</button>
+    <button id="toolSwitch">🔀 Свитч</button>
+    <button id="toolMonitor">🖵 Монитор</button>
+    <button id="toolPC">💻 ПК</button>
+  </div>
+  <label>Камер за раз: <input id="cameraCount" type="number" value="1" min="1" max="10"></label>
+  <label>Масштаб (пикс/м): <input id="scaleInput" type="number" value="50" min="1" step="1"></label>
+
+  <h3>📦 Прайс-лист (CSV)</h3>
+  <label class="upload-btn" for="csvUpload">📂 Загрузить CSV</label>
+  <input type="file" id="csvUpload" accept=".csv">
+  <div id="csvStatus" style="font-size:11px; color:#94a3b8;">Не загружен</div>
+  <select id="equipmentSelect"><option value="">-- Выберите камеру --</option></select>
+
+  <h3>🎛 Оборудование</h3>
+  <select id="recorderSelect" style="margin-bottom:4px;"><option value="">Регистратор (нет)</option></select>
+  <select id="switchSelect"><option value="">Свитч (нет)</option></select>
+
+  <div class="property-panel" id="propertyPanel">
+    <strong>📋 Свойства</strong>
+    <div id="propContent">Выберите объект</div>
+  </div>
+
+  <button id="calcBtn">💰 Рассчитать смету</button>
+  <div class="smeta-box" id="smetaBox" style="display:none;"></div>
+
+  <button id="saveBtn">💾 Сохранить проект</button>
+  <button id="loadBtn">📂 Загрузить проект</button>
+  <button id="aiAuditBtn">🤖 AI-аудит (симуляция)</button>
+</div>
+
+<div class="canvas-container">
+  <canvas id="mainCanvas"></canvas>
+</div>
+
+<div id="aiModal" class="modal">
+  <div class="modal-content">
+    <h3>Результат AI-аудита (DeepSeek)</h3>
+    <div id="aiResultText" style="white-space: pre-wrap;"></div>
+    <button onclick="document.getElementById('aiModal').style.display='none'">Закрыть</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('mainCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // ---------- СОСТОЯНИЕ (объявлено до первого использования) ----------
+  let zoom = 1, panX = 0, panY = 0;
+  let isPanning = false, panStart = {x:0,y:0};
+  let currentTool = 'select';
+  let walls = [];
+  let cameras = [];
+  let texts = [];
+  let cables = [];
+  let links = [];        // [{from: {x,y}, to: {x,y}}]
+  let devices = [];      // [{type:'recorder'|'switch'|'monitor'|'pc', x, y, article?}]
+  let equipment = [];
+  let selectedObject = null; // {type:'wall'|'camera'|'text'|'cable'|'link'|'device', index}
+  let wallDrawing = null;
+  let cableDrawing = [];
+  let linkDrawing = null; // {from: {x,y}, to: {x,y}} временная связь
+  let draggingWallEndpoint = null; // {wallIndex, point: 'start'|'end'}
+
+  // UI элементы
+  const toolButtons = {
+    select: document.getElementById('toolSelect'),
+    wall: document.getElementById('toolWall'),
+    camera: document.getElementById('toolCamera'),
+    text: document.getElementById('toolText'),
+    cable: document.getElementById('toolCable'),
+    link: document.getElementById('toolLink'),
+    recorder: document.getElementById('toolRecorder'),
+    switch: document.getElementById('toolSwitch'),
+    monitor: document.getElementById('toolMonitor'),
+    pc: document.getElementById('toolPC')
+  };
+  const cameraCountInput = document.getElementById('cameraCount');
+  const scaleInput = document.getElementById('scaleInput');
+  const equipmentSelect = document.getElementById('equipmentSelect');
+  const recorderSelect = document.getElementById('recorderSelect');
+  const switchSelect = document.getElementById('switchSelect');
+  const propContent = document.getElementById('propContent');
+  const csvStatus = document.getElementById('csvStatus');
+  const smetaBox = document.getElementById('smetaBox');
+  const aiModal = document.getElementById('aiModal');
+  const aiResultText = document.getElementById('aiResultText');
+
+  function resize() {
+    canvas.width = window.innerWidth - 300;
+    canvas.height = window.innerHeight;
+    drawAll();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Переключение инструментов
+  function setTool(tool) {
+    currentTool = tool;
+    Object.keys(toolButtons).forEach(t => toolButtons[t].classList.remove('active'));
+    toolButtons[tool].classList.add('active');
+    wallDrawing = null;
+    cableDrawing = [];
+    linkDrawing = null;
+    selectedObject = null;
+    draggingWallEndpoint = null;
+    updatePropertyPanel();
+    drawAll();
+  }
+  toolButtons.select.addEventListener('click', () => setTool('select'));
+  toolButtons.wall.addEventListener('click', () => setTool('wall'));
+  toolButtons.camera.addEventListener('click', () => setTool('camera'));
+  toolButtons.text.addEventListener('click', () => setTool('text'));
+  toolButtons.cable.addEventListener('click', () => setTool('cable'));
+  toolButtons.link.addEventListener('click', () => setTool('link'));
+  toolButtons.recorder.addEventListener('click', () => setTool('recorder'));
+  toolButtons.switch.addEventListener('click', () => setTool('switch'));
+  toolButtons.monitor.addEventListener('click', () => setTool('monitor'));
+  toolButtons.pc.addEventListener('click', () => setTool('pc'));
+
+  // CSV-загрузка (аналогично, но с поддержкой русских категорий)
+  document.getElementById('csvUpload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        const text = ev.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) throw new Error('Пустой файл');
+        const sep = lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].split(sep).map(h => h.trim().toLowerCase());
+        const articleIdx = headers.indexOf('article');
+        const nameIdx = headers.indexOf('name');
+        if (articleIdx === -1 || nameIdx === -1) throw new Error('CSV должен содержать article и name');
+        const catIdx = headers.indexOf('category');
+        const angleHIdx = headers.indexOf('angle_h');
+        const angleVIdx = headers.indexOf('angle_v');
+        const resIdx = headers.indexOf('resolution');
+        const mountIdx = headers.indexOf('mount');
+        const priceIdx = headers.indexOf('price');
+        const powerIdx = headers.indexOf('power_consumption_w');
+
+        equipment = [];
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(sep).map(c => c.trim());
+          if (cols.length < articleIdx+1) continue;
+          const specs = {};
+          if (resIdx !== -1) specs.resolution = cols[resIdx];
+          if (angleHIdx !== -1) specs.angle_h = parseFloat(cols[angleHIdx]) || 90;
+          if (angleVIdx !== -1) specs.angle_v = parseFloat(cols[angleVIdx]) || null;
+          if (mountIdx !== -1) specs.mount = cols[mountIdx] || 'wall';
+          if (priceIdx !== -1) specs.price_rub = parseFloat(cols[priceIdx]) || 0;
+          if (powerIdx !== -1) specs.power_consumption_w = parseFloat(cols[powerIdx]) || 0;
+
+          equipment.push({
+            article: cols[articleIdx],
+            name: cols[nameIdx],
+            category: (cols[catIdx] || 'camera').toLowerCase(),
+            specs: specs
+          });
+        }
+        updateEquipmentSelects();
+        csvStatus.textContent = `Загружено ${equipment.length} позиций`;
+      } catch (err) {
+        alert('Ошибка CSV: ' + err.message);
+        csvStatus.textContent = 'Ошибка загрузки';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  function updateEquipmentSelects() {
+    equipmentSelect.innerHTML = '<option value="">-- Выберите камеру --</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'camera' || eq.category === 'камера') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${eq.article} - ${eq.name} (${eq.specs.angle_h || 90}°)`;
+        equipmentSelect.appendChild(opt);
+      }
+    });
+    recorderSelect.innerHTML = '<option value="">Регистратор (нет)</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'recorder' || eq.category === 'registrator' || eq.category === 'регистратор') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = eq.article + ' - ' + eq.name;
+        recorderSelect.appendChild(opt);
+      }
+    });
+    switchSelect.innerHTML = '<option value="">Свитч (нет)</option>';
+    equipment.forEach((eq, idx) => {
+      if (eq.category === 'switch' || eq.category === 'poe' || eq.category === 'коммутатор') {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = eq.article + ' - ' + eq.name;
+        switchSelect.appendChild(opt);
+      }
+    });
+  }
+
+  function getSelectedCameraEquipment() {
+    const idx = equipmentSelect.value;
+    return idx !== '' ? equipment[parseInt(idx)] : null;
+  }
+
+  // Масштаб (пикселей в метре)
+  function getScale() {
+    return parseFloat(scaleInput.value) || 50;
+  }
+
+  // Рисование
+  function drawAll() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+    drawGrid();
+    drawWalls();
+    drawCables();
+    drawLinks();
+    drawDevices();
+    drawCameras();
+    drawTexts();
+    if (wallDrawing) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(wallDrawing.x1, wallDrawing.y1);
+      ctx.lineTo(wallDrawing.x2, wallDrawing.y2);
+      ctx.stroke();
+      const lenPx = Math.hypot(wallDrawing.x2 - wallDrawing.x1, wallDrawing.y2 - wallDrawing.y1);
+      const lenM = (lenPx / getScale()).toFixed(1);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = `${12/zoom}px sans-serif`;
+      ctx.fillText(`${lenM} м`, (wallDrawing.x1+wallDrawing.x2)/2+5/zoom, (wallDrawing.y1+wallDrawing.y2)/2-5/zoom);
+    }
+    if (cableDrawing.length > 0) {
+      ctx.strokeStyle = '#f472b6';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(cableDrawing[0][0], cableDrawing[0][1]);
+      for (let i = 1; i < cableDrawing.length; i++) {
+        ctx.lineTo(cableDrawing[i][0], cableDrawing[i][1]);
+      }
+      ctx.stroke();
+    }
+    if (linkDrawing) {
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 2 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(linkDrawing.from.x, linkDrawing.from.y);
+      ctx.lineTo(linkDrawing.to.x, linkDrawing.to.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGrid() {
+    const g = 20;
+    const sX = -panX/zoom, sY = -panY/zoom;
+    const eX = sX + canvas.width/zoom, eY = sY + canvas.height/zoom;
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 0.5/zoom;
+    for (let x = Math.floor(sX/g)*g; x <= eX; x += g) {
+      ctx.beginPath(); ctx.moveTo(x, sY); ctx.lineTo(x, eY); ctx.stroke();
+    }
+    for (let y = Math.floor(sY/g)*g; y <= eY; y += g) {
+      ctx.beginPath(); ctx.moveTo(sX, y); ctx.lineTo(eX, y); ctx.stroke();
+    }
+  }
+
+  function drawWalls() {
+    walls.forEach((w, i) => {
+      const isSel = selectedObject?.type === 'wall' && selectedObject.index === i;
+      ctx.strokeStyle = isSel ? '#38bdf8' : '#94a3b8';
+      ctx.lineWidth = 3/zoom;
+      ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+      const lenPx = Math.hypot(w.x2-w.x1, w.y2-w.y1);
+      const lenM = (lenPx / getScale()).toFixed(1);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = `${11/zoom}px sans-serif`;
+      ctx.fillText(`${lenM} м`, (w.x1+w.x2)/2+4/zoom, (w.y1+w.y2)/2-4/zoom);
+      if (isSel) {
+        // маркеры на концах
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath(); ctx.arc(w.x1, w.y1, 5/zoom, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(w.x2, w.y2, 5/zoom, 0, Math.PI*2); ctx.fill();
+      }
+    });
+  }
+
+  function drawCables() {
+    cables.forEach((cable, idx) => {
+      const pts = cable.points;
+      ctx.strokeStyle = '#f472b6';
+      ctx.lineWidth = 2/zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let j=1; j<pts.length; j++) {
+        ctx.lineTo(pts[j][0], pts[j][1]);
+      }
+      ctx.stroke();
+      let totalPx = 0;
+      for (let j=1; j<pts.length; j++) {
+        totalPx += Math.hypot(pts[j][0]-pts[j-1][0], pts[j][1]-pts[j-1][1]);
+      }
+      const totalM = (totalPx / getScale()).toFixed(1);
+      const midX = pts.reduce((s,p)=>s+p[0],0)/pts.length, midY = pts.reduce((s,p)=>s+p[1],0)/pts.length;
+      ctx.fillStyle = '#f472b6';
+      ctx.font = `${10/zoom}px sans-serif`;
+      ctx.fillText(`${totalM} м`, midX+5/zoom, midY-5/zoom);
+    });
+  }
+
+  function drawLinks() {
+    links.forEach((link, i) => {
+      const isSel = selectedObject?.type === 'link' && selectedObject.index === i;
+      ctx.strokeStyle = isSel ? '#c084fc' : '#a78bfa';
+      ctx.lineWidth = 2/zoom;
+      ctx.beginPath();
+      ctx.moveTo(link.from.x, link.from.y);
+      ctx.lineTo(link.to.x, link.to.y);
+      ctx.stroke();
+      const lenPx = Math.hypot(link.to.x - link.from.x, link.to.y - link.from.y);
+      const lenM = (lenPx / getScale()).toFixed(1);
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = `${10/zoom}px sans-serif`;
+      ctx.fillText(`${lenM} м`, (link.from.x+link.to.x)/2+5/zoom, (link.from.y+link.to.y)/2-5/zoom);
+    });
+  }
+
+  function drawDevices() {
+    const icons = { recorder: '🖥️', switch: '🔀', monitor: '🖵', pc: '💻' };
+    devices.forEach((dev, i) => {
+      const isSel = selectedObject?.type === 'device' && selectedObject.index === i;
+      ctx.font = `${20/zoom}px sans-serif`;
+      ctx.fillText(icons[dev.type] || '❓', dev.x - 10/zoom, dev.y + 5/zoom);
+      if (isSel) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2/zoom;
+        ctx.strokeRect(dev.x - 15/zoom, dev.y - 15/zoom, 30/zoom, 30/zoom);
+      }
+    });
+  }
+
+  function drawCameras() {
+    cameras.forEach((cam, i) => {
+      const eq = equipment.find(e => e.article === cam.article);
+      const angleH = eq?.specs.angle_h || 70;
+      const radius = 150;
+      const rad = (cam.angle - 90) * Math.PI/180;
+      const half = angleH/2 * Math.PI/180;
+      ctx.save();
+      ctx.translate(cam.x, cam.y);
+      ctx.fillStyle = 'rgba(56,189,248,0.15)';
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,radius,rad-half,rad+half); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1/zoom; ctx.stroke();
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(0,0,6/zoom,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1/zoom; ctx.stroke();
+      if (selectedObject?.type === 'camera' && selectedObject.index === i) {
+        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2/zoom;
+        ctx.beginPath(); ctx.arc(0,0,10/zoom,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  function drawTexts() {
+    texts.forEach((t, i) => {
+      const isSel = selectedObject?.type === 'text' && selectedObject.index === i;
+      ctx.fillStyle = isSel ? '#fbbf24' : '#f1f5f9';
+      ctx.font = `${14/zoom}px sans-serif`;
+      ctx.fillText(t.text, t.x, t.y);
+      if (isSel) {
+        const m = ctx.measureText(t.text);
+        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1/zoom;
+        ctx.strokeRect(t.x-2/zoom, t.y-12/zoom, m.width+4/zoom, 16/zoom);
+      }
+    });
+  }
+
+  // Утилиты координат
+  function toLogical(cx, cy) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: (cx - r.left - panX) / zoom,
+      y: (cy - r.top - panY) / zoom
+    };
+  }
+
+  function findObjectAt(lx, ly) {
+    // камеры
+    for (let i = cameras.length-1; i >= 0; i--) {
+      if (Math.hypot(lx-cameras[i].x, ly-cameras[i].y) < 12/zoom) return {type:'camera', index:i};
+    }
+    // стены (по расстоянию до линии)
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      if (distToSegment(lx, ly, w.x1, w.y1, w.x2, w.y2) < 8/zoom) return {type:'wall', index:i};
+    }
+    // текст
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      const m = ctx.measureText(t.text);
+      if (lx >= t.x && lx <= t.x+m.width && ly >= t.y-12 && ly <= t.y+4) return {type:'text', index:i};
+    }
+    // кабели (по ближайшей точке)
+    for (let i = 0; i < cables.length; i++) {
+      const pts = cables[i].points;
+      for (let j=1; j<pts.length; j++) {
+        if (distToSegment(lx, ly, pts[j-1][0], pts[j-1][1], pts[j][0], pts[j][1]) < 6/zoom) return {type:'cable', index:i};
+      }
+    }
+    // связи
+    for (let i = 0; i < links.length; i++) {
+      const l = links[i];
+      if (distToSegment(lx, ly, l.from.x, l.from.y, l.to.x, l.to.y) < 6/zoom) return {type:'link', index:i};
+    }
+    // устройства
+    for (let i = 0; i < devices.length; i++) {
+      const d = devices[i];
+      if (Math.abs(lx-d.x)<10/zoom && Math.abs(ly-d.y)<10/zoom) return {type:'device', index:i};
+    }
+    return null;
+  }
+
+  function distToSegment(px,py,x1,y1,x2,y2){
+    const vx=x2-x1, vy=y2-y1, wx=px-x1, wy=py-y1;
+    const c1=vx*wx+vy*wy;
+    if(c1<=0) return Math.hypot(wx,wy);
+    const c2=vx*vx+vy*vy;
+    if(c2<=c1) return Math.hypot(px-x2,py-y2);
+    const b=c1/c2;
+    return Math.hypot(px-(x1+b*vx), py-(y1+b*vy));
+  }
+
+  function updatePropertyPanel() {
+    if (!selectedObject) {
+      propContent.innerHTML = 'Выберите объект';
+      return;
+    }
+    const obj = selectedObject;
+    let html = '';
+    // кнопка удаления
+    const delBtn = '<button onclick="document.dispatchEvent(new CustomEvent(\'deleteObject\'))" style="background:#b91c1c; margin-top:4px;">🗑️ Удалить</button>';
+
+    if (obj.type === 'camera') {
+      const cam = cameras[obj.index];
+      const eq = equipment.find(e => e.article === cam.article);
+      html = `<b>Камера</b><br>Артикул: ${cam.article}<br>${eq ? `Название: ${eq.name}<br>Угол обзора: ${eq.specs.angle_h||90}°<br>Разр: ${eq.specs.resolution||'-'}<br>Цена: ${eq.specs.price_rub?eq.specs.price_rub+' ₽':'-'}` : ''}
+        <br>Угол установки: <input type="range" min="0" max="360" value="${cam.angle}" id="cameraAngleSlider" style="width:80%;"> <span id="angleValue">${cam.angle}°</span>
+        <br>${delBtn}`;
+      setTimeout(() => {
+        const slider = document.getElementById('cameraAngleSlider');
+        const val = document.getElementById('angleValue');
+        if (slider && val) {
+          slider.addEventListener('input', function(e) {
+            const newAngle = parseInt(this.value);
+            cameras[obj.index].angle = newAngle;
+            val.textContent = newAngle + '°';
+            drawAll();
+          });
+        }
+      }, 0);
+    } else if (obj.type === 'wall') {
+      const w = walls[obj.index];
+      const lenPx = Math.hypot(w.x2-w.x1, w.y2-w.y1);
+      const lenM = (lenPx / getScale()).toFixed(1);
+      html = `<b>Стена</b><br>Длина: ${lenM} м<br>${delBtn}`;
+    } else if (obj.type === 'text') {
+      html = `<b>Текст</b><br>${texts[obj.index].text}<br><button id="editTextBtn">✏️ Редактировать</button> ${delBtn}`;
+      setTimeout(() => {
+        const btn = document.getElementById('editTextBtn');
+        if (btn) btn.onclick = () => {
+          const nt = prompt('Текст:', texts[obj.index].text);
+          if (nt !== null) { texts[obj.index].text = nt; drawAll(); updatePropertyPanel(); }
+        };
+      }, 0);
+    } else if (obj.type === 'cable') {
+      html = `<b>Кабель</b><br>${delBtn}`;
+    } else if (obj.type === 'link') {
+      html = `<b>Связь</b><br>${delBtn}`;
+    } else if (obj.type === 'device') {
+      const dev = devices[obj.index];
+      html = `<b>${dev.type}</b><br>${delBtn}`;
+    }
+    propContent.innerHTML = html;
+  }
+
+  // Обработчик удаления
+  document.addEventListener('deleteObject', () => {
+    if (!selectedObject) return;
+    switch (selectedObject.type) {
+      case 'camera': cameras.splice(selectedObject.index, 1); break;
+      case 'wall': walls.splice(selectedObject.index, 1); break;
+      case 'text': texts.splice(selectedObject.index, 1); break;
+      case 'cable': cables.splice(selectedObject.index, 1); break;
+      case 'link': links.splice(selectedObject.index, 1); break;
+      case 'device': devices.splice(selectedObject.index, 1); break;
+    }
+    selectedObject = null;
+    updatePropertyPanel();
+    drawAll();
+  });
+
+  // Клавиша Delete
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && selectedObject) {
+      document.dispatchEvent(new CustomEvent('deleteObject'));
+    }
+  });
+
+  // Обработчики мыши
+  canvas.addEventListener('mousedown', (e) => {
+    const pos = toLogical(e.clientX, e.clientY);
+    if (currentTool === 'select') {
+      // проверка маркеров стены
+      if (selectedObject?.type === 'wall') {
+        const w = walls[selectedObject.index];
+        if (Math.hypot(pos.x - w.x1, pos.y - w.y1) < 8/zoom) {
+          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'start' };
+          return;
+        } else if (Math.hypot(pos.x - w.x2, pos.y - w.y2) < 8/zoom) {
+          draggingWallEndpoint = { wallIndex: selectedObject.index, point: 'end' };
+          return;
+        }
+      }
+      const obj = findObjectAt(pos.x, pos.y);
+      if (obj) {
+        selectedObject = obj;
+        updatePropertyPanel();
+        drawAll();
+        return;
+      }
+      isPanning = true;
+      panStart = { x: e.clientX - panX, y: e.clientY - panY };
+      canvas.style.cursor = 'grabbing';
+    } else if (currentTool === 'wall') {
+      wallDrawing = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+    } else if (currentTool === 'camera') {
+      const eq = getSelectedCameraEquipment();
+      if (!eq) { alert('Сначала выберите камеру из прайс-листа!'); return; }
+      const count = parseInt(cameraCountInput.value) || 1;
+      for (let i = 0; i < count; i++) {
+        cameras.push({
+          id: Date.now() + i,
+          article: eq.article,
+          x: pos.x + i * 30,
+          y: pos.y,
+          angle: 0,
+          mount: eq.specs.mount || 'wall'
+        });
+      }
+      drawAll();
+    } else if (currentTool === 'text') {
+      const text = prompt('Введите текст:');
+      if (text) texts.push({ text, x: pos.x, y: pos.y });
+      drawAll();
+    } else if (currentTool === 'cable') {
+      cableDrawing.push([pos.x, pos.y]);
+      drawAll();
+    } else if (currentTool === 'link') {
+      if (!linkDrawing) {
+        linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
+      }
+    } else if (['recorder','switch','monitor','pc'].includes(currentTool)) {
+      const devType = currentTool;
+      let article = null;
+      if (devType === 'recorder' && recorderSelect.value) article = equipment[parseInt(recorderSelect.value)].article;
+      else if (devType === 'switch' && switchSelect.value) article = equipment[parseInt(switchSelect.value)].article;
+      devices.push({ type: devType, x: pos.x, y: pos.y, article });
+      drawAll();
+    }
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isPanning) {
+      panX = e.clientX - panStart.x;
+      panY = e.clientY - panStart.y;
+      drawAll();
+    }
+    if (draggingWallEndpoint) {
+      const pos = toLogical(e.clientX, e.clientY);
+      const w = walls[draggingWallEndpoint.wallIndex];
+      if (draggingWallEndpoint.point === 'start') { w.x1 = pos.x; w.y1 = pos.y; }
+      else { w.x2 = pos.x; w.y2 = pos.y; }
+      drawAll();
+    }
+    if (currentTool === 'wall' && wallDrawing) {
+      const pos = toLogical(e.clientX, e.clientY);
+      wallDrawing.x2 = pos.x;
+      wallDrawing.y2 = pos.y;
+      drawAll();
+    }
+    if (currentTool === 'link' && linkDrawing) {
+      const pos = toLogical(e.clientX, e.clientY);
+      linkDrawing.to = {x: pos.x, y: pos.y};
+      drawAll();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; canvas.style.cursor = 'grab'; }
+    if (currentTool === 'wall' && wallDrawing) {
+      const pos = { x: wallDrawing.x2, y: wallDrawing.y2 };
+      if (Math.hypot(pos.x - wallDrawing.x1, pos.y - wallDrawing.y1) > 5) {
+        walls.push({ x1: wallDrawing.x1, y1: wallDrawing.y1, x2: pos.x, y2: pos.y });
+      }
+      wallDrawing = null;
+      drawAll();
+    }
+    if (currentTool === 'link' && linkDrawing) {
+      if (Math.hypot(linkDrawing.to.x - linkDrawing.from.x, linkDrawing.to.y - linkDrawing.from.y) > 5) {
+        links.push({ from: linkDrawing.from, to: linkDrawing.to });
+      }
+      linkDrawing = null;
+      drawAll();
+    }
+    draggingWallEndpoint = null;
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    if (currentTool === 'cable' && cableDrawing.length >= 2) {
+      cables.push({ points: [...cableDrawing], type: 'manual' });
+      cableDrawing = [];
+      drawAll();
+    }
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zf = 0.1, oldZoom = zoom;
+    zoom = Math.min(Math.max(0.2, zoom * (e.deltaY<0?1+zf:1/(1+zf))), 5);
+    const rect = canvas.getBoundingClientRect();
+    panX = (e.clientX-rect.left) - ((e.clientX-rect.left)-panX)*(zoom/oldZoom);
+    panY = (e.clientY-rect.top) - ((e.clientY-rect.top)-panY)*(zoom/oldZoom);
+    drawAll();
+  });
+
+  // Смета (учитываем камеры, оборудование, связи и кабели)
+  document.getElementById('calcBtn').addEventListener('click', () => {
+    let total = 0;
+    let report = '📊 СМЕТА\n━━━━━━━━\n';
+    cameras.forEach(cam => {
+      const eq = equipment.find(e => e.article === cam.article);
+      const price = eq?.specs.price_rub || 0;
+      total += price;
+      report += `📷 ${eq?.article || cam.article}: ${price} ₽\n`;
+    });
+    devices.forEach(dev => {
+      if (dev.article) {
+        const eq = equipment.find(e => e.article === dev.article);
+        if (eq && eq.specs.price_rub) { total += eq.specs.price_rub; report += `🔹 ${eq.name}: ${eq.specs.price_rub} ₽\n`; }
+      }
+    });
+    let cableLen = 0;
+    cables.forEach(c => { for(let i=1;i<c.points.length;i++) cableLen += Math.hypot(c.points[i][0]-c.points[i-1][0], c.points[i][1]-c.points[i-1][1]); });
+    links.forEach(l => cableLen += Math.hypot(l.to.x-l.from.x, l.to.y-l.from.y));
+    const scale = getScale();
+    const cableM = cableLen / scale;
+    const cableCost = Math.round(cableM * 20);
+    total += cableCost;
+    report += `🔌 Кабель (${cableM.toFixed(1)} м): ${cableCost} ₽\n`;
+    const mountCost = cameras.length * 1500;
+    total += mountCost;
+    report += `🔧 Монтаж (${cameras.length} камер): ${mountCost} ₽\n━━━━━━━━\n💰 ИТОГО: ${Math.round(total)} ₽`;
+    smetaBox.textContent = report;
+    smetaBox.style.display = 'block';
+  });
+
+  // Сохранение/загрузка (теперь с новыми объектами)
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    const data = { walls, cameras, texts, cables, links, devices, equipment, scale: getScale() };
+    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'project.json';
+    a.click();
+  });
+  document.getElementById('loadBtn').addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type='file'; inp.accept='.json';
+    inp.onchange = e => {
+      const f = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          walls = data.walls || [];
+          cameras = data.cameras || [];
+          texts = data.texts || [];
+          cables = data.cables || [];
+          links = data.links || [];
+          devices = data.devices || [];
+          if (data.equipment) { equipment = data.equipment; updateEquipmentSelects(); csvStatus.textContent = `Загружено ${equipment.length} позиций (из проекта)`; }
+          if (data.scale) scaleInput.value = data.scale;
+          selectedObject = null;
+          updatePropertyPanel();
+          drawAll();
+        } catch(err) { alert('Ошибка файла'); }
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  });
+
+  // AI-аудит
+  document.getElementById('aiAuditBtn').addEventListener('click', () => {
+    if (cameras.length === 0) { alert('Добавьте камеры'); return; }
+    const blind = Math.random()>0.5 ? 'левом верхнем углу' : 'правой стороне';
+    const recCam = cameras[Math.floor(Math.random()*cameras.length)];
+    aiResultText.textContent = `[AI-аудит DeepSeek]\n\nПроанализировано камер: ${cameras.length}\nОбнаружена потенциальная слепая зона в ${blind}.\nПиксельная плотность в зоне идентификации: 130 px/м (норма).\nРекомендация: переместите камеру ${recCam.article} на 0.5 м в сторону слепой зоны или добавьте камеру с углом обзора > 100°.\n\n(В реальной версии ответ формирует ИИ DeepSeek по вашему API-ключу)`;
+    aiModal.style.display = 'flex';
+  });
+
+  drawAll();
+})();
+</script>
+</body>
+</html>
