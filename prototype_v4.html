@@ -173,10 +173,10 @@ body {
   const aiResultText = document.getElementById('aiResultText');
 
   function resize() {
-    canvas.width = window.innerWidth - 300;
+    canvas.width = window.innerWidth - 500;  // 280 + 220
     canvas.height = window.innerHeight;
     drawAll();
-  }
+}
   resize();
   window.addEventListener('resize', resize);
 
@@ -635,6 +635,15 @@ body {
       document.dispatchEvent(new CustomEvent('deleteObject'));
     }
   });
+  window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    canvas._cableStart = null;
+    canvas._dragOffset = null;
+    selectedObject = null;
+    drawAll();
+    updatePropertyPanel();
+  }
+});
 
   // Обработчики мыши
   canvas.addEventListener('mousedown', (e) => {
@@ -737,13 +746,6 @@ body {
       links.push({ from: fromPos, to: toPos });
       canvas._cableStart = null;
       selectedObject = null;
-      window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    canvas._cableStart = null;
-    selectedObject = null;
-    drawAll();
-  }
-});
       drawAll();
     }
   }
