@@ -2,75 +2,126 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Видео Помощник – Разработчик Studio817.ru Прототип v4 (Полный)</title>
+  <title>Видео Помощник – Готовый прототип</title>
   <style>
     :root {
-  --bg: #0f172a;
-  --sidebar-bg: #1e293b;
-  --text: #e2e8f0;
-  --panel-bg: #0f172a;
-  --border: #334155;
-}
-.light {
-  --bg: #f8fafc;
-  --sidebar-bg: #e2e8f0;
-  --text: #0f172a;
-  --panel-bg: #ffffff;
-  --border: #cbd5e1;
-}
-body { background: var(--bg); color: var(--text); }
-.sidebar { background: var(--sidebar-bg); }
-.property-panel, .smeta-box { background: var(--panel-bg); border-color: var(--border); }
-canvas { background: var(--bg); }
+      --bg: #0f172a;
+      --sidebar-bg: #1e293b;
+      --text: #e2e8f0;
+      --panel-bg: #0f172a;
+      --border: #334155;
+    }
+    .light {
+      --bg: #f8fafc;
+      --sidebar-bg: #e2e8f0;
+      --text: #0f172a;
+      --panel-bg: #ffffff;
+      --border: #cbd5e1;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; height: 100vh; overflow: hidden; }
-    .sidebar { width: 300px; background: #1e293b; padding: 10px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; font-size: 12px; }
-    .sidebar h3 { color: #38bdf8; margin: 4px 0; font-size: 14px; }
-    button, .upload-btn { background: #334155; color: #fff; border: none; padding: 6px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; transition: 0.2s; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .left-panel {
+      width: 280px;
+      background: var(--sidebar-bg);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      font-size: 12px;
+      order: 1;
+    }
+    .right-panel {
+      width: 220px;
+      background: var(--sidebar-bg);
+      padding: 10px;
+      font-size: 12px;
+      overflow-y: auto;
+      order: 3;
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      background: #0a0f1a;
+      overflow: hidden;
+      order: 2;
+    }
+    canvas { display: block; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    button, .upload-btn {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 6px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: 0.2s;
+    }
     button:hover, .upload-btn:hover { background: #475569; }
     button.active { background: #38bdf8; color: #000; font-weight: bold; }
     .toolbar { display: flex; flex-wrap: wrap; gap: 3px; }
-    .canvas-container { flex: 1; position: relative; background: #0a0f1a; overflow: hidden; }
-    canvas { display: block; cursor: grab; }
-    canvas:active { cursor: grabbing; }
-    select, input[type="range"] { width: 100%; padding: 4px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; font-size: 11px; }
-    .property-panel { background: #0f172a; border: 1px solid #334155; padding: 6px; border-radius: 6px; font-size: 11px; max-height: 160px; overflow-y: auto; }
+    select, input[type="range"] {
+      width: 100%;
+      padding: 4px;
+      background: #334155;
+      color: #fff;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+    .property-panel, .smeta-box {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      padding: 6px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .property-panel { max-height: 160px; overflow-y: auto; }
+    .smeta-box { max-height: 150px; overflow-y: auto; white-space: pre-wrap; margin-top: 5px; }
     input[type="file"] { display: none; }
-    #cameraCount { width: 45px; padding: 2px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; text-align: center; }
-    .smeta-box { background: #0f172a; border: 1px solid #10b981; border-radius: 8px; padding: 6px; max-height: 150px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; margin-top: 5px; }
-    .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:10; }
-    .modal-content { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 500px; width: 90%; color: #e2e8f0; }
+    #cameraCount {
+      width: 45px;
+      padding: 2px;
+      background: #334155;
+      color: #fff;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .modal-content {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 90%;
+      color: #e2e8f0;
+    }
     .modal-content button { margin-top: 10px; }
     label { display: block; margin-top: 4px; }
-    .left-panel {
-  order: 1;
-  width: 280px;
-  background: #1e293b;
-  padding: 10px;
-  font-size: 12px;
-  overflow-y: auto;
-}
-.right-panel {
-  order: 3;
-  width: 220px;
-  background: #1e293b;
-  padding: 10px;
-  font-size: 12px;
-  overflow-y: auto;
-}
-.canvas-container {
-  order: 2;
-  flex: 1;
-}
-body {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-}
+    h3 { color: #38bdf8; margin: 4px 0; font-size: 14px; }
   </style>
 </head>
 <body>
-<div class="sidebar left-panel">
+
+<div class="left-panel">
   <h3>📋 Свойства</h3>
   <div class="property-panel" id="propertyPanel">
     <strong>📋</strong>
@@ -95,8 +146,11 @@ body {
   <button id="aiAuditBtn">🤖 AI-аудит (симуляция)</button>
 </div>
 
-<!-- Новая правая панель инструментов -->
-<div class="sidebar right-panel">
+<div class="canvas-container">
+  <canvas id="mainCanvas"></canvas>
+</div>
+
+<div class="right-panel">
   <h3>🔧 Инструменты</h3>
   <div class="toolbar">
     <button id="toolSelect" class="active">🖱️ Выбрать</button>
@@ -115,10 +169,6 @@ body {
   <button id="themeToggle" style="margin-top:8px;">🌓 Тема</button>
 </div>
 
-<div class="canvas-container">
-  <canvas id="mainCanvas"></canvas>
-</div>
-
 <div id="aiModal" class="modal">
   <div class="modal-content">
     <h3>Результат AI-аудита (DeepSeek)</h3>
@@ -126,6 +176,7 @@ body {
     <button onclick="document.getElementById('aiModal').style.display='none'">Закрыть</button>
   </div>
 </div>
+
 <script>
 (function() {
   const canvas = document.getElementById('mainCanvas');
@@ -148,7 +199,6 @@ body {
   let linkDrawing = null;
   let draggingWallEndpoint = null;
 
-  // UI элементы
   const toolButtons = {
     select: document.getElementById('toolSelect'),
     wall: document.getElementById('toolWall'),
@@ -173,14 +223,13 @@ body {
   const aiResultText = document.getElementById('aiResultText');
 
   function resize() {
-    canvas.width = window.innerWidth - 500;  // 280 + 220
+    canvas.width = window.innerWidth - 500; // 280 + 220
     canvas.height = window.innerHeight;
     drawAll();
-}
+  }
   resize();
   window.addEventListener('resize', resize);
 
-  // Переключение инструментов
   function setTool(tool) {
     currentTool = tool;
     Object.keys(toolButtons).forEach(t => toolButtons[t].classList.remove('active'));
@@ -190,23 +239,12 @@ body {
     linkDrawing = null;
     selectedObject = null;
     draggingWallEndpoint = null;
-    canvas._cableStart = null;   // сброс построителя кабеля
+    canvas._cableStart = null;
     canvas._dragOffset = null;
     updatePropertyPanel();
     drawAll();
   }
-  toolButtons.select.addEventListener('click', () => setTool('select'));
-  toolButtons.wall.addEventListener('click', () => setTool('wall'));
-  toolButtons.camera.addEventListener('click', () => setTool('camera'));
-  toolButtons.text.addEventListener('click', () => setTool('text'));
-  toolButtons.cable.addEventListener('click', () => setTool('cable'));
-  toolButtons.link.addEventListener('click', () => setTool('link'));
-  toolButtons.recorder.addEventListener('click', () => setTool('recorder'));
-  toolButtons.switch.addEventListener('click', () => setTool('switch'));
-  toolButtons.monitor.addEventListener('click', () => setTool('monitor'));
-  toolButtons.pc.addEventListener('click', () => setTool('pc'));
 
-  // CSV-загрузка
   document.getElementById('csvUpload').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -301,8 +339,6 @@ body {
       const eq = equipment.find(e => e.article === cam.article);
       if (eq && eq.specs.power_consumption_w) totalPower += eq.specs.power_consumption_w;
     });
-
-    // Подбор регистратора
     const recorders = equipment.filter(e => e.category === 'recorder' || e.category === 'registrator' || e.category === 'регистратор');
     let bestRecorder = null, bestRecorderIdx = -1;
     recorders.forEach((rec, idx) => {
@@ -316,7 +352,6 @@ body {
     });
     recorderSelect.value = bestRecorderIdx >= 0 ? bestRecorderIdx : '';
 
-    // Подбор PoE-свитча
     const switches = equipment.filter(e => e.category === 'switch' || e.category === 'poe' || e.category === 'коммутатор');
     let bestSwitch = null, bestSwitchIdx = -1;
     switches.forEach((sw, idx) => {
@@ -349,7 +384,6 @@ body {
     return parseFloat(scaleInput.value) || 50;
   }
 
-  // Рисование
   function drawAll() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.save();
@@ -554,7 +588,6 @@ body {
       const eq = equipment.find(e => e.article === cam.article);
       html = `<b>Камера</b><br>Артикул: ${cam.article}<br>${eq ? `Название: ${eq.name}<br>Угол обзора: ${eq.specs.angle_h||90}°<br>Разр: ${eq.specs.resolution||'-'}<br>Цена: ${eq.specs.price_rub?eq.specs.price_rub+' ₽':'-'}` : ''}
         <br>Угол установки: <input type="range" min="0" max="360" value="${cam.angle}" id="cameraAngleSlider" style="width:80%;"> <span id="angleValue">${cam.angle}°</span>`;
-      // Привязка к регистратору/свитчу
       let linkOptions = '<br>Подключена к: ';
       const recDevices = devices.filter(d => d.type === 'recorder' || d.type === 'switch');
       if (recDevices.length > 0) {
@@ -570,8 +603,6 @@ body {
       }
       html += linkOptions + `<br>${delBtn}`;
       propContent.innerHTML = html;
-
-      // Обработчики событий
       setTimeout(() => {
         const slider = document.getElementById('cameraAngleSlider');
         const val = document.getElementById('angleValue');
@@ -614,7 +645,6 @@ body {
     }
   }
 
-  // Удаление
   document.addEventListener('deleteObject', () => {
     if (!selectedObject) return;
     switch (selectedObject.type) {
@@ -630,22 +660,19 @@ body {
     drawAll();
     autoSelectEquipment();
   });
+
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Delete' && selectedObject) {
       document.dispatchEvent(new CustomEvent('deleteObject'));
+    } else if (e.key === 'Escape') {
+      canvas._cableStart = null;
+      canvas._dragOffset = null;
+      selectedObject = null;
+      drawAll();
+      updatePropertyPanel();
     }
   });
-  window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    canvas._cableStart = null;
-    canvas._dragOffset = null;
-    selectedObject = null;
-    drawAll();
-    updatePropertyPanel();
-  }
-});
 
-  // Обработчики мыши
   canvas.addEventListener('mousedown', (e) => {
     const pos = toLogical(e.clientX, e.clientY);
     if (currentTool === 'select') {
@@ -665,7 +692,6 @@ body {
         canvas._dragOffset = {
           obj: obj,
           startX: pos.x, startY: pos.y,
-          // сохранение начальных координат для перемещения
           wallX1: obj.type === 'wall' ? walls[obj.index].x1 : null,
           wallY1: obj.type === 'wall' ? walls[obj.index].y1 : null,
           wallX2: obj.type === 'wall' ? walls[obj.index].x2 : null,
@@ -701,55 +727,47 @@ body {
       if (text) texts.push({ text, x: pos.x, y: pos.y });
       drawAll();
     } else if (currentTool === 'cable') {
-  // Ищем камеру или устройство с щедрым радиусом захвата
-  let hit = null;
-  for (let i = cameras.length - 1; i >= 0; i--) {
-    if (Math.hypot(pos.x - cameras[i].x, pos.y - cameras[i].y) < 20 / zoom) {
-      hit = { type: 'camera', index: i };
-      break;
-    }
-  }
-  if (!hit) {
-    for (let i = 0; i < devices.length; i++) {
-      const d = devices[i];
-      if (Math.abs(pos.x - d.x) < 15 / zoom && Math.abs(pos.y - d.y) < 15 / zoom) {
-        hit = { type: 'device', index: i };
-        break;
+      let hit = null;
+      for (let i = cameras.length - 1; i >= 0; i--) {
+        if (Math.hypot(pos.x - cameras[i].x, pos.y - cameras[i].y) < 20 / zoom) {
+          hit = { type: 'camera', index: i };
+          break;
+        }
       }
-    }
-  }
-
-  if (hit) {
-    if (!canvas._cableStart) {
-      // Первый клик — выбираем начало
-      canvas._cableStart = hit;
-      selectedObject = hit; // временно подсвечиваем
-      drawAll();
-    } else {
-      // Второй клик — строим связь
-      const start = canvas._cableStart;
-      let fromPos, toPos;
-      if (start.type === 'camera') fromPos = { x: cameras[start.index].x, y: cameras[start.index].y };
-      else fromPos = { x: devices[start.index].x, y: devices[start.index].y };
-      if (hit.type === 'camera') toPos = { x: cameras[hit.index].x, y: cameras[hit.index].y };
-      else toPos = { x: devices[hit.index].x, y: devices[hit.index].y };
-
-      // Не даём соединить объект сам с собой
-      if (start.type === hit.type && start.index === hit.index) {
-        alert('Нельзя соединить объект сам с собой!');
-        canvas._cableStart = null;
-        selectedObject = null;
-        drawAll();
-        return;
+      if (!hit) {
+        for (let i = 0; i < devices.length; i++) {
+          const d = devices[i];
+          if (Math.abs(pos.x - d.x) < 15 / zoom && Math.abs(pos.y - d.y) < 15 / zoom) {
+            hit = { type: 'device', index: i };
+            break;
+          }
+        }
       }
-
-      links.push({ from: fromPos, to: toPos });
-      canvas._cableStart = null;
-      selectedObject = null;
-      drawAll();
-    }
-  }
-}
+      if (hit) {
+        if (!canvas._cableStart) {
+          canvas._cableStart = hit;
+          selectedObject = hit;
+          drawAll();
+        } else {
+          const start = canvas._cableStart;
+          let fromPos, toPos;
+          if (start.type === 'camera') fromPos = { x: cameras[start.index].x, y: cameras[start.index].y };
+          else fromPos = { x: devices[start.index].x, y: devices[start.index].y };
+          if (hit.type === 'camera') toPos = { x: cameras[hit.index].x, y: cameras[hit.index].y };
+          else toPos = { x: devices[hit.index].x, y: devices[hit.index].y };
+          if (start.type === hit.type && start.index === hit.index) {
+            alert('Нельзя соединить объект сам с собой!');
+            canvas._cableStart = null;
+            selectedObject = null;
+            drawAll();
+            return;
+          }
+          links.push({ from: fromPos, to: toPos });
+          canvas._cableStart = null;
+          selectedObject = null;
+          drawAll();
+        }
+      }
     } else if (currentTool === 'link') {
       if (!linkDrawing) linkDrawing = { from: {x: pos.x, y: pos.y}, to: {x: pos.x, y: pos.y} };
     } else if (['recorder','switch','monitor','pc'].includes(currentTool)) {
@@ -804,7 +822,6 @@ body {
       drawAll();
       return;
     }
-
     if (isPanning) {
       panX = e.clientX - panStart.x;
       panY = e.clientY - panStart.y;
@@ -831,7 +848,6 @@ body {
 
   window.addEventListener('mouseup', () => {
     canvas._dragOffset = null;
-    canvas._cableStart = null; // на всякий случай сбросим
     if (isPanning) { isPanning = false; canvas.style.cursor = 'grab'; }
     if (currentTool === 'wall' && wallDrawing) {
       const pos = { x: wallDrawing.x2, y: wallDrawing.y2 };
@@ -851,25 +867,6 @@ body {
     draggingWallEndpoint = null;
   });
 
-  canvas.addEventListener('dblclick', (e) => {
-    if (currentTool === 'cable' && cableDrawing.length >= 2) {
-      cables.push({ points: [...cableDrawing], type: 'manual' });
-      cableDrawing = [];
-      drawAll();
-    }
-  });
-
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zf = 0.1, oldZoom = zoom;
-    zoom = Math.min(Math.max(0.2, zoom * (e.deltaY<0?1+zf:1/(1+zf))), 5);
-    const rect = canvas.getBoundingClientRect();
-    panX = (e.clientX-rect.left) - ((e.clientX-rect.left)-panX)*(zoom/oldZoom);
-    panY = (e.clientY-rect.top) - ((e.clientY-rect.top)-panY)*(zoom/oldZoom);
-    drawAll();
-  });
-
-  // Смета
   document.getElementById('calcBtn').addEventListener('click', () => {
     let total = 0;
     let report = '📊 СМЕТА\n━━━━━━━━\n';
@@ -917,7 +914,6 @@ body {
     smetaBox.style.display = 'block';
   });
 
-  // Сохранение/загрузка
   document.getElementById('saveBtn').addEventListener('click', () => {
     const data = { walls, cameras, texts, cables, links, devices, equipment, scale: getScale() };
     const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
@@ -926,6 +922,7 @@ body {
     a.download = 'project.json';
     a.click();
   });
+
   document.getElementById('loadBtn').addEventListener('click', () => {
     const inp = document.createElement('input');
     inp.type='file'; inp.accept='.json';
@@ -954,7 +951,6 @@ body {
     inp.click();
   });
 
-  // AI-аудит
   document.getElementById('aiAuditBtn').addEventListener('click', () => {
     if (cameras.length === 0) { alert('Добавьте камеры'); return; }
     const blind = Math.random()>0.5 ? 'левом верхнем углу' : 'правой стороне';
@@ -963,14 +959,17 @@ body {
     aiModal.style.display = 'flex';
   });
 
-  // Тема
   document.getElementById('themeToggle').addEventListener('click', () => {
     document.body.classList.toggle('light');
+  });
+
+  // Привязка кнопок инструментов
+  Object.entries(toolButtons).forEach(([name, btn]) => {
+    btn.addEventListener('click', () => setTool(name));
   });
 
   drawAll();
 })();
 </script>
-
 </body>
 </html>
