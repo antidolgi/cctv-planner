@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Видео Помощник — Проект для инвестора и разработчика</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Видео Помощник — Инвестиционная презентация</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; flex-direction: column; align-items: center; }
@@ -14,7 +14,7 @@
     .container { max-width: 1100px; width: 100%; background: #0f172a; padding: 30px; border-radius: 0 0 12px 12px; }
     .slide { display: none; }
     .slide.active { display: block; }
-    h1 { font-size: 2.5rem; margin-bottom: 20px; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    h1 { font-size: 2.5rem; margin-bottom: 20px; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     h2 { color: #f1f5f9; border-left: 4px solid #38bdf8; padding-left: 15px; margin: 25px 0 15px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
     .card { background: #1e293b; border-radius: 12px; padding: 20px; }
@@ -27,13 +27,16 @@
     svg { max-width: 100%; height: auto; }
     .badge { background: #1e293b; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; margin: 5px; color: #38bdf8; display: inline-block; }
     button { background: #38bdf8; border: none; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .pwd-box { margin-top: 20px; display: flex; gap: 10px; align-items: center; }
+    .pwd-box input { padding: 8px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #fff; }
     @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    ul { margin-left: 20px; line-height: 1.8; }
   </style>
 </head>
 <body>
   <div class="tabs">
-    <div class="tab active" onclick="switchTab('investor')">👔 Инвестору</div>
-    <div class="tab" onclick="switchTab('developer')">💻 Разработчику</div>
+    <div class="tab active" id="tab-investor">👔 Инвестору</div>
+    <div class="tab" id="tab-developer">💻 Разработчику</div>
   </div>
 
   <div class="container">
@@ -49,7 +52,7 @@
         </div>
         <div class="card">
           <h3>🟢 Наше решение</h3>
-          <p>Облачный 3D-планировщик с ИИ-ассистентом, доступный в браузере. Мгновенный аудит проекта, рекомендации по оптимизации, мультивендорность (любой прайс-лист CSV).</p>
+          <p>Облачная платформа с ИИ-ассистентом, доступная из браузера. Мгновенный аудит проекта, автоматический подбор оборудования, полная смета «под ключ» в рублях. Поддержка любого прайс-листа (CSV) — максимальная гибкость для российских монтажных организаций.</p>
         </div>
       </div>
 
@@ -58,126 +61,261 @@
         <tr><th>Функция</th><th>JVSG</th><th>Uniview</th><th>Наш продукт</th></tr>
         <tr><td>3D-моделирование</td><td>✔ Десктоп</td><td>✔ Ограниченный</td><td>✔ Веб (браузер)</td></tr>
         <tr><td>AI-аудит проекта</td><td>✖</td><td>✖</td><td>✔ Уникальная</td></tr>
-        <tr><td>Мультивендорность</td><td>Частично</td><td>✖</td><td>✔ Любой CSV</td></tr>
-        <tr><td>Расчёт пикс. плотности</td><td>✔</td><td>✔</td><td>✔</td></tr>
-        <tr><td>Генерация спецификации</td><td>✔</td><td>✔</td><td>✔ AI-автоматизация</td></tr>
+        <tr><td>Мультивендорность (любой CSV)</td><td>Частично</td><td>✖</td><td>✔</td></tr>
+        <tr><td>Расчёт пиксельной плотности (DORI)</td><td>✔</td><td>✔</td><td>✔</td></tr>
+        <tr><td>Автоподбор NVR / PoE-свитча</td><td>✖</td><td>✖</td><td>✔</td></tr>
+        <tr><td>Проверка совместимости (порты, PoE-бюджет)</td><td>✖</td><td>✖</td><td>✔</td></tr>
+        <tr><td>Трассировка кабеля с расчётом метража</td><td>Частично</td><td>✖</td><td>✔</td></tr>
+        <tr><td>Генерация спецификации (BOM)</td><td>✔</td><td>✔</td><td>✔ (с AI)</td></tr>
         <tr><td>Мобильное приложение</td><td>✖</td><td>✖</td><td>В разработке</td></tr>
       </table>
 
-      <h2>Бизнес-модель</h2>
+      <h2>Полный список функций, включённых в продукт</h2>
       <div class="grid">
-        <div class="card"><span class="stat">Freemium</span><br><small>1 проект, 5 камер, базовый функционал</small></div>
-        <div class="card"><span class="stat">$29/мес</span><br><small>Pro: безлимит, AI-аудит, отчёты, CSV-прайсы</small></div>
-        <div class="card"><span class="stat">Enterprise</span><br><small>On-premise, BIM-интеграция, кастомизация</small></div>
+        <div class="card">
+          <h3>📐 Планировка</h3>
+          <ul>
+            <li>Загрузка планов (PNG, JPG, PDF)</li>
+            <li>Масштабируемая миллиметровка</li>
+            <li>Стены с отображением длины</li>
+            <li>Двери, окна, препятствия</li>
+            <li>Текстовые комментарии</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>📦 Оборудование</h3>
+          <ul>
+            <li>Умный CSV-парсер (Dahua и др.)</li>
+            <li>Гибкий справочник (любые характеристики)</li>
+            <li>Категории: камеры, NVR, свитчи, кабели, БП, мониторы</li>
+            <li>Ручное добавление устройств с настройкой портов</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>📷 Камеры и визуализация</h3>
+          <ul>
+            <li>Размещение с учётом высоты и направления</li>
+            <li>Сектор обзора с реальным углом</li>
+            <li>Цветовое кодирование зон DORI</li>
+            <li>Поворот камер и веерная расстановка</li>
+            <li>Интерактивная проверка слепых зон</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>⚙️ Инженерные расчёты</h3>
+          <ul>
+            <li>Автоподбор NVR (каналы, битрейт)</li>
+            <li>Автоподбор PoE-коммутатора (порты, бюджет)</li>
+            <li>Расчёт объёма архива (HDD)</li>
+            <li>Трассировка кабеля вручную с метражом</li>
+            <li>Проверка ограничений UTP (100 м)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>🔗 Логика связей</h3>
+          <ul>
+            <li>Связи: камера ↔ свитч ↔ NVR ↔ монитор</li>
+            <li>Контроль количества портов</li>
+            <li>Запрет двойного подключения</li>
+            <li>При перемещении – кабель тянется автоматически</li>
+            <li>Уведомления о необходимости розеток и БП</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>💰 Смета и отчёты</h3>
+          <ul>
+            <li>Интерактивная смета в рублях</li>
+            <li>Расчёт монтажа (время, количество человек)</li>
+            <li>Экспорт в Excel и PDF</li>
+            <li>Сохранение/загрузка проектов (JSON)</li>
+            <li>Облачное хранение (будущее)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>🤖 AI-аудит (DeepSeek)</h3>
+          <ul>
+            <li>Поиск слепых зон</li>
+            <li>Проверка пиксельной плотности (DORI)</li>
+            <li>Рекомендации по оптимизации расстановки</li>
+            <li>Советы по избыточности покрытия</li>
+            <li>Бесплатный лимит для MVP</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>🚀 Дополнительно (дорожная карта)</h3>
+          <ul>
+            <li>3D-визуализация (Three.js)</li>
+            <li>Импорт DWG/DXF с распознаванием стен</li>
+            <li>Мобильное приложение (React Native)</li>
+            <li>Совместная работа в реальном времени</li>
+            <li>Интеграция с 1С и системами СКУД/ОПС</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Бизнес-модель (тарифы в рублях)</h2>
+      <div class="grid">
+        <div class="card"><span class="stat">Старт</span><br><small>0 ₽/мес. 1 проект, 5 камер, базовый функционал</small></div>
+        <div class="card"><span class="stat">1 990 ₽/мес</span><br><small>Профи: безлимит проектов и камер, полный AI-аудит, экспорт смет, приоритетная поддержка</small></div>
+        <div class="card"><span class="stat">Бизнес</span><br><small>Индивидуально: API, интеграция с 1С, кастомизация, персональный менеджер</small></div>
       </div>
 
       <h2>Дорожная карта</h2>
-      <div class="roadmap-step"><div class="step-num">1</div><div>MVP: планировщик, зоны обзора, AI-аудит (1-2 мес.)</div></div>
-      <div class="roadmap-step"><div class="step-num">2</div><div>3D-визуализация, веб-приложение (React), облачное сохранение (3-4 мес.)</div></div>
-      <div class="roadmap-step"><div class="step-num">3</div><div>Мобильные приложения iOS/Android, интеграция с BIM (5-6 мес.)</div></div>
+      <div class="roadmap-step"><div class="step-num">1</div><div>MVP (1-2 мес.): работающий прототип, базовые инструменты, AI-аудит (симуляция)</div></div>
+      <div class="roadmap-step"><div class="step-num">2</div><div>Релиз v1.0 (3-5 мес.): React + FastAPI, живой AI-аудит, облачное сохранение, экспорт отчётов</div></div>
+      <div class="roadmap-step"><div class="step-num">3</div><div>Масштабирование (6-12 мес.): 3D, мобильное приложение, интеграции, корпоративные функции</div></div>
 
       <h2>Инвестиционное предложение</h2>
       <div class="card">
-        <p><strong>Ищем 1 200 000 - 1 500 000 рублей </strong> на разработку MVP и первичный маркетинг. Команда: основатель (эксперт CCTV) + fullstack-разработчик + AI-инженер (DeepSeek). Потенциал рынка: $2,1 млрд (глобальный рынок VMS).</p>
+        <p><strong>Ищем 1 200 000 – 1 500 000 рублей</strong> на разработку MVP и первичный маркетинг.</p>
+        <p><strong>Потенциал рынка в России:</strong></p>
+        <ul style="text-align: left; margin-top: 8px;">
+          <li>Объём рынка видеонаблюдения РФ к концу 2025 года: <strong>≈ 47,6 млрд ₽</strong> (прогноз МТС и Onside).</li>
+          <li>Оценка с учётом ПО и услуг: около <strong>100 млрд ₽</strong> (данные Ivideon).</li>
+          <li>Ежегодный рост: <strong>10-20%</strong>.</li>
+          <li>Драйверы: государственные программы, умные города, импортозамещение.</li>
+        </ul>
+        <p><strong>Команда:</strong> основатель (эксперт CCTV), fullstack-разработчик, AI-инженер (DeepSeek).</p>
+        <p><strong>Окупаемость:</strong> 50 платных пользователей тарифа «Профи» приносят более 1 млн рублей в год, что быстро возвращает инвестиции.</p>
       </div>
     </div>
 
-    <!-- Вкладка Разработчик -->
+    <!-- Вкладка Разработчик (защищена паролем) -->
     <div id="developer" class="slide">
-      <h1>Технический проект «Видео Помощник»</h1>
-      <p style="margin-bottom:20px;">Полное описание архитектуры, стека, моделей данных и требований для MVP</p>
-
-      <h2>Цель продукта</h2>
-      <p>Web-приложение для проектирования видеонаблюдения с встроенным AI-аудитом. Пользователь загружает план, расставляет камеры, получает анализ покрытия и спецификацию (BOM).</p>
-
-      <h2>Технологический стек</h2>
-      <div class="grid">
-        <div class="card"><strong>Frontend</strong><br>React 18 + TypeScript, Konva.js (2D-холст), React Three Fiber (3D), TailwindCSS</div>
-        <div class="card"><strong>Backend</strong><br>Python 3.11 + FastAPI, SQLAlchemy, Alembic</div>
-        <div class="card"><strong>Базы данных</strong><br>PostgreSQL (основная), Redis (сессии/кеш)</div>
-        <div class="card"><strong>AI-модуль</strong><br>DeepSeek API (аудит проекта), интеграция через HTTP</div>
-        <div class="card"><strong>Хранение файлов</strong><br>AWS S3 / MinIO (планы, проекты)</div>
-        <div class="card"><strong>DevOps</strong><br>Docker, GitHub Actions, Nginx</div>
+      <div id="dev-locked" style="text-align: center; padding: 50px;">
+        <h2>Доступ для технического специалиста</h2>
+        <p>Для просмотра технической документации введите пароль, полученный от основателя проекта.</p>
+        <div class="pwd-box" style="display: flex; justify-content: center;">
+          <input type="password" id="devPassword" placeholder="Введите пароль" />
+          <button id="devUnlockBtn">Открыть</button>
+        </div>
+        <p id="devError" style="color: #f87171; margin-top: 10px; display: none;">Неверный пароль</p>
       </div>
+      <div id="dev-content" style="display: none;">
+        <!-- Содержимое разработчика (копия предыдущей вкладки) -->
+        <h1>Технический проект «Видео Помощник»</h1>
+        <p style="margin-bottom:20px;">Полное описание архитектуры, стека, моделей данных и требований для MVP</p>
 
-      <h2>Архитектурная схема</h2>
-      <!-- Простая SVG-схема -->
-      <svg viewBox="0 0 800 280" style="background:#1e293b; border-radius:12px; padding:10px;">
-        <rect x="20" y="100" width="130" height="60" rx="10" fill="#38bdf8"/><text x="85" y="135" text-anchor="middle" fill="#000" font-weight="bold">React Frontend</text>
-        <rect x="300" y="100" width="130" height="60" rx="10" fill="#818cf8"/><text x="365" y="135" text-anchor="middle" fill="#000" font-weight="bold">FastAPI Backend</text>
-        <rect x="580" y="100" width="130" height="60" rx="10" fill="#f472b6"/><text x="645" y="135" text-anchor="middle" fill="#000" font-weight="bold">DeepSeek AI</text>
-        <rect x="300" y="30" width="130" height="40" rx="8" fill="#cbd5e1"/><text x="365" y="53" text-anchor="middle" fill="#000">PostgreSQL</text>
-        <rect x="300" y="200" width="130" height="40" rx="8" fill="#94a3b8"/><text x="365" y="223" text-anchor="middle" fill="#000">S3/MinIO</text>
-        <line x1="150" y1="130" x2="300" y2="130" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
-        <line x1="430" y1="130" x2="580" y2="130" stroke="#cbd5e1" stroke-width="2"/>
-        <line x1="365" y1="70" x2="365" y2="100" stroke="#cbd5e1" stroke-width="2"/>
-        <line x1="365" y1="160" x2="365" y2="200" stroke="#cbd5e1" stroke-width="2"/>
-        <defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#cbd5e1"/></marker></defs>
-      </svg>
+        <h2>Цель продукта</h2>
+        <p>Web-приложение для проектирования видеонаблюдения с встроенным AI-аудитом. Пользователь загружает план, расставляет камеры, получает анализ покрытия и спецификацию (BOM).</p>
 
-      <h2>Модель данных (основные сущности)</h2>
-      <div class="grid">
-        <div class="card">
-          <strong>User</strong><br>
-          <code>id, email, password_hash, subscription</code>
+        <h2>Технологический стек</h2>
+        <div class="grid">
+          <div class="card"><strong>Frontend</strong><br>React 18 + TypeScript, Konva.js (2D-холст), React Three Fiber (3D), TailwindCSS</div>
+          <div class="card"><strong>Backend</strong><br>Python 3.11 + FastAPI, SQLAlchemy, Alembic</div>
+          <div class="card"><strong>Базы данных</strong><br>PostgreSQL (основная), Redis (сессии/кеш)</div>
+          <div class="card"><strong>AI-модуль</strong><br>DeepSeek API (аудит проекта), интеграция через HTTP</div>
+          <div class="card"><strong>Хранение файлов</strong><br>AWS S3 / MinIO (планы, проекты)</div>
+          <div class="card"><strong>DevOps</strong><br>Docker, GitHub Actions, Nginx</div>
         </div>
-        <div class="card">
-          <strong>Project</strong><br>
-          <code>id, user_id, name, plan_url, walls_json, devices_json</code>
-        </div>
-        <div class="card">
-          <strong>Device (камера, свитч)</strong><br>
-          <code>id, project_id, type, x, y, angle, mount, article</code>
-        </div>
-        <div class="card">
-          <strong>Equipment (справочник)</strong><br>
-          <code>article(PK), name, category, angle_h, angle_v, resolution, mount, price</code>
-        </div>
-      </div>
 
-      <h2>AI-интеграция (DeepSeek API)</h2>
-      <p>Backend формирует JSON с координатами камер, стен, параметрами углов обзора. Запрос к DeepSeek возвращает список проблемных зон и рекомендаций. <a href="https://platform.deepseek.com/api-docs" style="color:#38bdf8;">Документация API</a>. Бесплатный лимит 10 млн. токенов.</p>
+        <h2>Архитектурная схема</h2>
+        <svg viewBox="0 0 800 280" style="background:#1e293b; border-radius:12px; padding:10px;">
+          <rect x="20" y="100" width="130" height="60" rx="10" fill="#38bdf8"/><text x="85" y="135" text-anchor="middle" fill="#000" font-weight="bold">React Frontend</text>
+          <rect x="300" y="100" width="130" height="60" rx="10" fill="#818cf8"/><text x="365" y="135" text-anchor="middle" fill="#000" font-weight="bold">FastAPI Backend</text>
+          <rect x="580" y="100" width="130" height="60" rx="10" fill="#f472b6"/><text x="645" y="135" text-anchor="middle" fill="#000" font-weight="bold">DeepSeek AI</text>
+          <rect x="300" y="30" width="130" height="40" rx="8" fill="#cbd5e1"/><text x="365" y="53" text-anchor="middle" fill="#000">PostgreSQL</text>
+          <rect x="300" y="200" width="130" height="40" rx="8" fill="#94a3b8"/><text x="365" y="223" text-anchor="middle" fill="#000">S3/MinIO</text>
+          <line x1="150" y1="130" x2="300" y2="130" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
+          <line x1="430" y1="130" x2="580" y2="130" stroke="#cbd5e1" stroke-width="2"/>
+          <line x1="365" y1="70" x2="365" y2="100" stroke="#cbd5e1" stroke-width="2"/>
+          <line x1="365" y1="160" x2="365" y2="200" stroke="#cbd5e1" stroke-width="2"/>
+          <defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#cbd5e1"/></marker></defs>
+        </svg>
 
-      <h2>Требования к MVP</h2>
-      <ul style="margin-left:20px; line-height:1.8;">
-        <li>Регистрация/авторизация (JWT)</li>
-        <li>Загрузка плана этажа (PNG/JPG) как подложка</li>
-        <li>Масштабируемый холст с сеткой (Konva.js)</li>
-        <li>Инструменты: стена, камера, выбор/редактирование</li>
-        <li>Загрузка CSV с оборудованием, динамический каталог</li>
-        <li>Визуализация зоны обзора (сектор) с учётом угла и ориентации</li>
-        <li>Расчёт пиксельной плотности (цветовое кодирование)</li>
-        <li>AI-аудит: кнопка «Анализ», запрос к DeepSeek, подсветка проблем</li>
-        <li>Панель свойств выделенного объекта</li>
-        <li>Сохранение/загрузка проекта (сервер + локальный JSON)</li>
-        <li>Генерация PDF-отчёта (BOM)</li>
-      </ul>
+        <h2>Модель данных (основные сущности)</h2>
+        <div class="grid">
+          <div class="card"><strong>User</strong><br><code>id, email, password_hash, subscription</code></div>
+          <div class="card"><strong>Project</strong><br><code>id, user_id, name, plan_url, walls_json, devices_json</code></div>
+          <div class="card"><strong>Device (камера, свитч)</strong><br><code>id, project_id, type, x, y, angle, mount, article</code></div>
+          <div class="card"><strong>Equipment (справочник)</strong><br><code>article(PK), name, category, angle_h, angle_v, resolution, mount, price</code></div>
+        </div>
 
-      <h2>План для помощника-разработчика</h2>
-      <div class="card">
-        <p><strong>Этап 0 (сейчас):</strong> Статический прототип на HTML/Canvas с зонами обзора и CSV-парсером.<br>
-        <strong>Этап 1 (MVP):</strong> React + FastAPI, интеграция DeepSeek, первые пользователи.<br>
-        <strong>Этап 2:</strong> 3D, отчёты, мобильная версия (React Native).</p>
-        <button onclick="alert('Свяжитесь с основателем для участия в проекте!')">Присоединиться к команде</button>
+        <h2>AI-интеграция (DeepSeek API)</h2>
+        <p>Backend формирует JSON с координатами камер, стен, параметрами углов обзора. Запрос к DeepSeek возвращает список проблемных зон и рекомендаций. <a href="https://platform.deepseek.com/api-docs" style="color:#38bdf8;">Документация API</a>. Бесплатный лимит 10 млн. токенов.</p>
+
+        <h2>Требования к MVP</h2>
+        <ul style="margin-left:20px; line-height:1.8;">
+          <li>Регистрация/авторизация (JWT)</li>
+          <li>Загрузка плана этажа (PNG/JPG) как подложка</li>
+          <li>Масштабируемый холст с сеткой (Konva.js)</li>
+          <li>Инструменты: стена, камера, выбор/редактирование</li>
+          <li>Загрузка CSV с оборудованием, динамический каталог</li>
+          <li>Визуализация зоны обзора (сектор) с учётом угла и ориентации</li>
+          <li>Расчёт пиксельной плотности (цветовое кодирование)</li>
+          <li>AI-аудит: кнопка «Анализ», запрос к DeepSeek, подсветка проблем</li>
+          <li>Панель свойств выделенного объекта</li>
+          <li>Сохранение/загрузка проекта (сервер + локальный JSON)</li>
+          <li>Генерация PDF-отчёта (BOM)</li>
+        </ul>
+
+        <h2>План для разработчика</h2>
+        <div class="card">
+          <p><strong>Этап 0 (сейчас):</strong> Статический прототип на HTML/Canvas с зонами обзора и CSV-парсером.<br />
+          <strong>Этап 1 (MVP):</strong> React + FastAPI, интеграция DeepSeek, первые пользователи.<br />
+          <strong>Этап 2:</strong> 3D, отчёты, мобильная версия (React Native).</p>
+          <button onclick="alert('Свяжитесь с основателем для участия в проекте!')">Присоединиться к команде</button>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-      document.querySelector(`.tab:contains('${tabId === 'investor' ? 'Инвестору' : 'Разработчику'}')`).classList.add('active');
-    }
-    // исправляем contains кастомно
-    document.querySelectorAll('.tab').forEach(t => {
-      t.addEventListener('click', function() {
-        const text = this.textContent.trim();
-        if (text.includes('Инвестору')) switchTab('investor');
-        else switchTab('developer');
+    (function() {
+      const tabInvestor = document.getElementById('tab-investor');
+      const tabDeveloper = document.getElementById('tab-developer');
+      const slideInvestor = document.getElementById('investor');
+      const slideDeveloper = document.getElementById('developer');
+
+      function showSlide(id) {
+        slideInvestor.classList.remove('active');
+        slideDeveloper.classList.remove('active');
+        tabInvestor.classList.remove('active');
+        tabDeveloper.classList.remove('active');
+        if (id === 'investor') {
+          slideInvestor.classList.add('active');
+          tabInvestor.classList.add('active');
+        } else {
+          slideDeveloper.classList.add('active');
+          tabDeveloper.classList.add('active');
+        }
+      }
+
+      tabInvestor.addEventListener('click', () => showSlide('investor'));
+      tabDeveloper.addEventListener('click', () => {
+        if (sessionStorage.getItem('devAccess') === 'true') {
+          showSlide('developer');
+        } else {
+          const pwd = prompt('Введите пароль для доступа к разделу разработчика:');
+          if (pwd === '89957886668') {
+            sessionStorage.setItem('devAccess', 'true');
+            showSlide('developer');
+            document.getElementById('dev-locked').style.display = 'none';
+            document.getElementById('dev-content').style.display = 'block';
+          } else {
+            alert('Неверный пароль');
+          }
+        }
       });
-    });
+
+      // Разблокировка через кнопку на странице разработчика
+      document.getElementById('devUnlockBtn').addEventListener('click', function() {
+        const pwd = document.getElementById('devPassword').value;
+        if (pwd === '89957886668') {
+          sessionStorage.setItem('devAccess', 'true');
+          document.getElementById('dev-locked').style.display = 'none';
+          document.getElementById('dev-content').style.display = 'block';
+        } else {
+          document.getElementById('devError').style.display = 'block';
+        }
+      });
+
+      // Если разработчик уже разблокирован, показываем сразу
+      if (sessionStorage.getItem('devAccess') === 'true') {
+        document.getElementById('dev-locked').style.display = 'none';
+        document.getElementById('dev-content').style.display = 'block';
+      }
+    })();
   </script>
 </body>
 </html>
